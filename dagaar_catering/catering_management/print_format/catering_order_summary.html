@@ -1,0 +1,41 @@
+{% set order = doc %}
+<style>
+body{font-family:Arial,sans-serif;font-size:11pt;color:#222;padding:20px}
+.hdr{background:#c0392b;color:#fff;padding:16px 22px;border-radius:6px 6px 0 0}
+.hdr h1{margin:0;font-size:20pt}.brand{font-size:11pt;font-weight:bold;color:#f8c3c0}
+.sec-title{font-size:10pt;font-weight:bold;color:#c0392b;border-bottom:1.5px solid #e74c3c;padding-bottom:3px;margin:16px 0 8px;text-transform:uppercase}
+table{width:100%;border-collapse:collapse;margin-bottom:10px}
+th{background:#c0392b;color:#fff;padding:6px 9px;text-align:left;font-size:9pt}
+td{padding:5px 9px;border-bottom:1px solid #f0f0f0;font-size:9pt}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:0 30px}
+.irow{display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px dotted #eee}
+.ilbl{color:#888}.ival{font-weight:bold}
+.tot td{font-weight:bold;background:#fde8e8!important}
+.footer{margin-top:24px;font-size:8pt;color:#aaa;text-align:center;border-top:1px solid #eee;padding-top:8px}
+</style>
+<div class="hdr"><span class="brand">DagaarSoft Catering</span><h1>Order Summary</h1>
+<p style="margin:3px 0;font-size:9pt;opacity:.8">{{ order.name }} | {{ frappe.format(order.creation,"Date") }} | {{ order.status or 'Draft' }}</p></div>
+<div class="sec-title">Order Details</div>
+<div class="grid">
+<div>
+<div class="irow"><span class="ilbl">Customer</span><span class="ival">{{ order.customer }}</span></div>
+<div class="irow"><span class="ilbl">Event Date</span><span class="ival">{{ frappe.format(order.event_date,"Date") }}</span></div>
+<div class="irow"><span class="ilbl">Event Type</span><span class="ival">{{ order.event_type or '-' }}</span></div>
+<div class="irow"><span class="ilbl">Location</span><span class="ival">{{ order.event_location or '-' }}</span></div>
+</div>
+<div>
+<div class="irow"><span class="ilbl">Total Guests</span><span class="ival">{{ order.total_guests or 0 }}</span></div>
+<div class="irow"><span class="ilbl">Package Type</span><span class="ival">{{ order.package_type or '-' }}</span></div>
+<div class="irow"><span class="ilbl">Company</span><span class="ival">{{ order.company }}</span></div>
+<div class="irow"><span class="ilbl">Order Value</span><span class="ival">{{ frappe.format(order.total_order_value,"Currency") }}</span></div>
+</div></div>
+{% if order.get("items") %}
+<div class="sec-title">Menu Items</div>
+<table><thead><tr><th>Item Code</th><th>Item Name</th><th>Category</th><th>Qty/Guest</th><th>UOM</th><th>Rate</th><th>Amount</th></tr></thead><tbody>
+{% for item in order.items %}
+<tr><td>{{ item.item_code }}</td><td>{{ item.item_name or '' }}</td><td>{{ item.item_category or '' }}</td><td>{{ item.qty_per_guest or '' }}</td><td>{{ item.uom or '' }}</td><td>{{ frappe.format(item.rate,"Currency") }}</td><td>{{ frappe.format(item.amount,"Currency") }}</td></tr>
+{% endfor %}
+</tbody><tfoot><tr class="tot"><td colspan="6" style="text-align:right">Total</td><td>{{ frappe.format(order.total_order_value,"Currency") }}</td></tr></tfoot></table>
+{% endif %}
+{% if order.special_instructions %}<div class="sec-title">Special Instructions</div><p>{{ order.special_instructions }}</p>{% endif %}
+<div class="footer">DagaarSoft Catering &mdash; Confidential &mdash; {{ frappe.utils.now() }}</div>

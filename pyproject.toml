@@ -1,0 +1,14 @@
+[project]
+name = "dagaar_catering"
+authors = [{name = "DagaarSoft", email = "support@dagaarsoft.com"}]
+description = "DagaarSoft Catering - Enterprise Catering Management System"
+requires-python = ">=3.10"
+readme = "README.md"
+dynamic = ["version"]
+
+[build-system]
+requires = ["flit_core >=3.4,<4"]
+build-backend = "flit_core.buildapi"
+
+[tool.flit.module]
+name = "dagaar_catering"

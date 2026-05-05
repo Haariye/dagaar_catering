@@ -1,0 +1,43 @@
+{% set cs = doc %}
+<style>
+body{font-family:Arial,sans-serif;font-size:10pt;color:#222;padding:20px}
+.hdr{background:#1a1a2e;color:#fff;padding:16px 22px}
+.hdr h1{margin:0;font-size:20pt}.brand{color:#e74c3c;font-weight:bold}
+.sec{font-size:10pt;font-weight:bold;color:#1a1a2e;border-bottom:2px solid #e74c3c;padding-bottom:3px;margin:16px 0 9px}
+.plt td{padding:6px 11px;border-bottom:1px solid #f0f0f0}
+.plt .lbl{color:#666}.plt .val{font-weight:bold;text-align:right}
+.plt .sub td{background:#f8f8f8;font-weight:bold}
+.plt .tot td{background:#1a1a2e;color:#fff;font-weight:bold}
+.pos{color:#27ae60}.neg{color:#e74c3c}
+.irow{display:flex;gap:40px;margin:3px 0}
+.ilbl{color:#888;min-width:130px}
+.footer{margin-top:28px;font-size:8pt;color:#aaa;border-top:1px solid #eee;padding-top:8px}
+</style>
+<div class="hdr"><span class="brand">DagaarSoft Catering</span><h1>Closing Sheet</h1>
+<p style="margin:3px 0;font-size:9pt;opacity:.8">{{ cs.name }} | Order: {{ cs.catering_order or '-' }} | {{ frappe.format(cs.closing_date,"Date") if cs.closing_date else '-' }}</p></div>
+<div class="sec">Summary</div>
+<div class="irow"><span class="ilbl">Catering Order</span><b>{{ cs.catering_order or '-' }}</b></div>
+<div class="irow"><span class="ilbl">Company</span><b>{{ cs.company or '-' }}</b></div>
+<div class="irow"><span class="ilbl">Closing Date</span><b>{{ frappe.format(cs.closing_date,"Date") if cs.closing_date else '-' }}</b></div>
+<div class="sec">Profit & Loss</div>
+<table class="plt" style="width:100%;border-collapse:collapse">
+<tr><td class="lbl">Total Revenue</td><td class="val">{{ frappe.format(cs.total_revenue,"Currency") }}</td></tr>
+<tr><td class="lbl" style="padding-left:18px">Food Cost</td><td class="val">{{ frappe.format(cs.food_cost or 0,"Currency") }}</td></tr>
+<tr><td class="lbl" style="padding-left:18px">Beverage Cost</td><td class="val">{{ frappe.format(cs.beverage_cost or 0,"Currency") }}</td></tr>
+<tr><td class="lbl" style="padding-left:18px">Labor Cost</td><td class="val">{{ frappe.format(cs.labor_cost or 0,"Currency") }}</td></tr>
+<tr><td class="lbl" style="padding-left:18px">Delivery Cost</td><td class="val">{{ frappe.format(cs.delivery_cost or 0,"Currency") }}</td></tr>
+<tr><td class="lbl" style="padding-left:18px">Wastage</td><td class="val">{{ frappe.format(cs.total_wastage or 0,"Currency") }}</td></tr>
+<tr><td class="lbl" style="padding-left:18px">Emergency Expenses</td><td class="val">{{ frappe.format(cs.total_emergency_expense or 0,"Currency") }}</td></tr>
+<tr class="sub"><td>Total Costs</td><td class="val">{{ frappe.format(cs.total_cost,"Currency") }}</td></tr>
+<tr class="tot"><td>Net Profit</td><td class="val {{ 'pos' if (cs.net_profit or 0) >= 0 else 'neg' }}">{{ frappe.format(cs.net_profit or 0,"Currency") }}</td></tr>
+<tr class="tot"><td>Gross Margin %</td><td class="val">{{ "%.1f"|format(cs.gross_margin_percent or 0) }}%</td></tr>
+</table>
+<div class="sec">Authorizations</div>
+<table style="width:100%"><tr>
+<td>Catering Manager: _______________________</td>
+<td>Finance Manager: _______________________</td>
+<td>Management: _______________________</td>
+</tr><tr>
+<td>Date: _______________</td><td>Date: _______________</td><td>Date: _______________</td>
+</tr></table>
+<div class="footer">DagaarSoft Catering &mdash; Closing Sheet &mdash; Confidential &mdash; {{ frappe.utils.now() }}</div>

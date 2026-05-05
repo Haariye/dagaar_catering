@@ -1,0 +1,31 @@
+{% set plan = doc %}
+<style>
+body{font-family:Arial,sans-serif;font-size:10pt;color:#1a1a1a;padding:20px}
+.hdr{background:#2c3e50;color:#fff;padding:14px 20px}
+.hdr h1{margin:0;font-size:18pt}.sub{font-size:9pt;opacity:.8;margin-top:3px}
+.brand{color:#e74c3c;font-weight:bold;font-size:11pt}
+.note{background:#f39c12;color:#fff;padding:7px 14px;margin:10px 0;border-radius:4px;font-weight:bold}
+.sec{font-size:10pt;font-weight:bold;color:#2c3e50;border-left:4px solid #e74c3c;padding-left:7px;margin:14px 0 7px}
+table{width:100%;border-collapse:collapse}
+th{background:#2c3e50;color:#fff;padding:6px 9px;text-align:left;font-size:9pt}
+td{padding:5px 9px;border-bottom:1px solid #eee;font-size:9pt}
+.cb{display:inline-block;width:14px;height:14px;border:1.5px solid #333;margin-right:5px;vertical-align:middle}
+.footer{margin-top:24px;font-size:8pt;color:#999;border-top:1px solid #eee;padding-top:7px}
+</style>
+<div class="hdr">
+<div class="brand">DagaarSoft Catering</div>
+<h1>Kitchen Preparation Sheet</h1>
+<div class="sub">Plan: {{ plan.name }} | Order: {{ plan.catering_order or '-' }} | Event: {{ frappe.format(plan.event_date,"Date") if plan.event_date else '-' }}</div>
+</div>
+{% if plan.notes %}<div class="note">⚠️ {{ plan.notes }}</div>{% endif %}
+<div class="sec">Production Checklist</div>
+<table><thead><tr><th style="width:30px">✓</th><th>Item</th><th>Qty</th><th>UOM</th><th>Station</th><th>Start</th><th>End</th><th>Notes</th></tr></thead><tbody>
+{% if plan.get("items") %}{% for item in plan.items %}
+<tr><td><span class="cb"></span></td><td>{{ item.item_code or '' }} - {{ item.item_name or '' }}</td><td>{{ item.planned_qty or 0 }}</td><td>{{ item.uom or '' }}</td><td>{{ item.kitchen_station or '-' }}</td><td>{{ item.prep_start_time or '-' }}</td><td>{{ item.prep_end_time or '-' }}</td><td>{{ item.notes or '' }}</td></tr>
+{% endfor %}{% else %}
+<tr><td colspan="8" style="text-align:center;color:#888">No items in production plan.</td></tr>
+{% endif %}
+</tbody></table>
+<div class="sec">Sign-off</div>
+<table><tr><td>Kitchen Manager: _______________________</td><td>Time: ___________</td><td>Date: ___________</td></tr></table>
+<div class="footer">DagaarSoft Catering &mdash; Kitchen Prep Sheet &mdash; {{ frappe.utils.now() }}</div>

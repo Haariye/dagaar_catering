@@ -1,0 +1,3 @@
+dagaar_catering.catering_management.patches.v1_0.create_catering_roles
+dagaar_catering.catering_management.patches.v1_0.create_default_settings
+dagaar_catering.catering_management.patches.v1_0.add_catering_order_links

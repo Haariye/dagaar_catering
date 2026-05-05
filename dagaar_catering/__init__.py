@@ -1,0 +1,7 @@
+__version__ = "1.0.0"
+app_name = "dagaar_catering"
+app_title = "DagaarSoft Catering"
+app_publisher = "DagaarSoft"
+app_description = "Enterprise Catering Management System by DagaarSoft"
+app_email = "support@dagaarsoft.com"
+app_license = "MIT"

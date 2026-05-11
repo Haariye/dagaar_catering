@@ -46,7 +46,10 @@
   "require_bom_for_production_items",
   "auto_calculate_raw_materials",
   "auto_check_stock_availability",
-  "auto_apply_wastage_to_cost"
+  "auto_apply_wastage_to_cost",
+  "default_mode_of_payment",
+  "default_bank_account",
+  "minimum_payment_percent_for_production"
  ],
  "fields": [
   {
@@ -295,9 +298,10 @@
   },
   {
    "fieldname": "default_deposit_percent",
-   "label": "Default Deposit %",
+   "label": "Default Initial Payment %",
    "fieldtype": "Percent",
-   "default": "30"
+   "default": "30",
+   "description": "Suggested initial payment % when creating first Payment Entry"
   },
   {
    "fieldname": "default_branch",
@@ -406,6 +410,26 @@
    "label": "Auto-apply Wastage % to Cost",
    "fieldtype": "Check",
    "default": "1"
+  },
+  {
+   "fieldname": "default_mode_of_payment",
+   "label": "Default Mode of Payment",
+   "fieldtype": "Link",
+   "options": "Mode of Payment"
+  },
+  {
+   "fieldname": "default_bank_account",
+   "label": "Default Bank/Cash Account",
+   "fieldtype": "Link",
+   "options": "Account",
+   "description": "Account where deposits are received (Bank or Cash type)"
+  },
+  {
+   "fieldname": "minimum_payment_percent_for_production",
+   "label": "Minimum Payment % Required Before Production",
+   "fieldtype": "Percent",
+   "default": "30",
+   "description": "Catering Order must have at least this % of Sales Invoice paid before Production can start. (Manager can bypass.)"
   }
  ],
  "is_submittable": 0,

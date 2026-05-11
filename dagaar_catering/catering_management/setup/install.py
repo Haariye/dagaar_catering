@@ -34,6 +34,7 @@ def after_install():
 	_safe_step("Workflows",      create_catering_workflows)
 	_safe_step("Workspace",      create_catering_workspace)
 	_safe_step("Custom Fields",  add_catering_order_custom_fields)
+	_safe_step("Categories",     seed_default_categories)
 	frappe.db.commit()
 	print("DagaarSoft Catering: post-install setup completed.")
 
@@ -45,6 +46,7 @@ def after_migrate():
 	_safe_step("Workflows",      create_catering_workflows)
 	_safe_step("Workspace",      create_catering_workspace)
 	_safe_step("Custom Fields",  add_catering_order_custom_fields)
+	_safe_step("Categories",     seed_default_categories)
 	frappe.db.commit()
 
 
@@ -360,14 +362,15 @@ def create_catering_workspace():
 # ════════════════════════════════════════════════════════════════════════════
 
 def add_catering_order_custom_fields():
-	# Hard prerequisite: Catering Order DocType must exist
-	if not frappe.db.exists("DocType", "Catering Order"):
-		print("    Catering Order DocType not found yet — skipping custom field creation.")
-		return
+	"""Add catering_order link to ERPNext docs.
 
-	# Also verify the underlying table exists
-	if not _table_exists("tabCatering Order"):
-		print("    tabCatering Order table not yet created — skipping custom field creation.")
+	Strategy (works even when Frappe Custom Field API rejects the field):
+	  1. Add the column directly via ALTER TABLE (always succeeds in MariaDB)
+	  2. Add the Custom Field metadata so it shows in the UI
+	Both steps are idempotent — safe to run multiple times.
+	"""
+	if not frappe.db.exists("DocType", "Catering Order"):
+		print("    Catering Order DocType not yet installed — skipping.")
 		return
 
 	targets = [
@@ -376,28 +379,67 @@ def add_catering_order_custom_fields():
 		"Purchase Order", "Purchase Invoice", "Work Order", "Stock Entry",
 	]
 
+	columns_added = 0
+	fields_added = 0
+	skipped = 0
+
 	for dt in targets:
 		if not frappe.db.exists("DocType", dt):
+			skipped += 1
 			continue
-		cf_name = f"{dt}-catering_order"
-		if frappe.db.exists("Custom Field", cf_name):
-			continue
+
+		table = f"tab{dt}"
+
+		# Step 1: ALTER TABLE if the column is missing.
+		# This is the critical step — the database column MUST exist for SQL queries.
 		try:
-			cf = frappe.new_doc("Custom Field")
-			cf.dt = dt
-			cf.label = "Catering Order"
-			cf.fieldname = "catering_order"
-			cf.fieldtype = "Link"
-			cf.options = "Catering Order"
-			cf.insert_after = "naming_series"
-			cf.in_standard_filter = 1
-			cf.print_hide = 1
-			cf.description = "Reference to the Catering Order this document was created from"
-			cf.flags.ignore_validate = True   # bypass options validation if needed
-			cf.insert(ignore_permissions=True)
+			has_col = frappe.db.sql(
+				"""SELECT COUNT(*) FROM information_schema.columns
+				   WHERE table_schema = DATABASE()
+				     AND table_name = %s
+				     AND column_name = 'catering_order'""",
+				table,
+			)[0][0] > 0
+			if not has_col:
+				frappe.db.sql(
+					f"ALTER TABLE `{table}` "
+					f"ADD COLUMN `catering_order` VARCHAR(140) DEFAULT NULL"
+				)
+				# Best-effort index for performance
+				try:
+					frappe.db.sql(
+						f"ALTER TABLE `{table}` ADD INDEX `idx_catering_order` (`catering_order`)"
+					)
+				except Exception:
+					pass  # index may already exist
+				columns_added += 1
 		except Exception as e:
-			# Don't print the ERPNext "row #N" errors verbosely — just skip
-			pass
+			print(f"    [{dt}] ALTER TABLE failed: {str(e)[:120]}")
+
+		# Step 2: Create Custom Field metadata so the field is editable in the UI.
+		# This may fail if Frappe validation rejects it — that's fine, the column already exists.
+		cf_name = f"{dt}-catering_order"
+		if not frappe.db.exists("Custom Field", cf_name):
+			try:
+				cf = frappe.new_doc("Custom Field")
+				cf.dt = dt
+				cf.label = "Catering Order"
+				cf.fieldname = "catering_order"
+				cf.fieldtype = "Link"
+				cf.options = "Catering Order"
+				cf.insert_after = "naming_series"
+				cf.in_standard_filter = 1
+				cf.print_hide = 1
+				cf.flags.ignore_validate = True
+				cf.flags.ignore_permissions = True
+				cf.insert(ignore_permissions=True)
+				fields_added += 1
+			except Exception:
+				pass
+
+	frappe.db.commit()
+	print(f"    catering_order: {columns_added} columns added, {fields_added} custom fields added, {skipped} doctypes skipped")
+
 
 
 def _table_exists(table_name):
@@ -545,3 +587,33 @@ def diagnose():
 	print(f"\n7. Module Def 'Catering Management' registered? {'YES' if mdef else 'NO'}")
 
 	print("\n=== End Diagnostic ===\n")
+
+
+def seed_default_categories():
+	"""Seed Catering Item Category with sensible defaults if empty."""
+	if not frappe.db.exists("DocType", "Catering Item Category"):
+		return
+	# Skip if any categories already exist
+	if frappe.db.count("Catering Item Category") > 0:
+		return
+
+	defaults = [
+		{"category_name": "Food",      "requires_production": 1, "is_manufactured_default": 1, "default_wastage_percent": 5},
+		{"category_name": "Beverage",  "requires_production": 1, "is_manufactured_default": 0, "default_wastage_percent": 3},
+		{"category_name": "Snacks",    "requires_production": 1, "is_manufactured_default": 1, "default_wastage_percent": 5},
+		{"category_name": "Dessert",   "requires_production": 1, "is_manufactured_default": 1, "default_wastage_percent": 5},
+		{"category_name": "Service",   "requires_production": 0, "is_manufactured_default": 0, "default_wastage_percent": 0},
+		{"category_name": "Packaging", "requires_production": 0, "is_manufactured_default": 0, "default_wastage_percent": 2},
+		{"category_name": "Rental",    "requires_production": 0, "is_manufactured_default": 0, "default_wastage_percent": 0},
+		{"category_name": "Other",     "requires_production": 0, "is_manufactured_default": 0, "default_wastage_percent": 0},
+	]
+
+	for cat in defaults:
+		try:
+			doc = frappe.new_doc("Catering Item Category")
+			doc.update(cat)
+			doc.flags.ignore_permissions = True
+			doc.insert(ignore_permissions=True)
+		except Exception as e:
+			print(f"  Failed to seed {cat['category_name']}: {str(e)[:100]}")
+

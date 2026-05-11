@@ -1,6 +1,7 @@
 {
  "actions": [],
- "creation": "2024-01-01 00:00:00.000000",
+ "autoname": "naming_series:",
+ "creation": "2024-01-01 00:00:00",
  "doctype": "DocType",
  "editable_grid": 1,
  "engine": "InnoDB",
@@ -23,42 +24,33 @@
   "journal_entry",
   "notes_sb",
   "justification",
-  "notes"
+  "notes",
+  "amended_from"
  ],
  "fields": [
   {
+   "default": "CEE-.YYYY.-",
    "fieldname": "naming_series",
-   "fieldtype": "Data",
+   "fieldtype": "Select",
    "label": "Series",
-   "reqd": 1,
-   "bold": 0,
-   "in_list_view": 0,
-   "in_filter": 0,
-   "read_only": 0,
-   "hidden": 0
+   "options": "CEE-.YYYY.-",
+   "reqd": 1
   },
   {
+   "bold": 1,
    "fieldname": "catering_order",
    "fieldtype": "Link",
-   "label": "Catering Order",
-   "reqd": 1,
-   "bold": 1,
    "in_list_view": 1,
-   "in_filter": 0,
-   "read_only": 0,
-   "hidden": 0,
-   "options": "Catering Order"
+   "label": "Catering Order",
+   "options": "Catering Order",
+   "reqd": 1
   },
   {
    "fieldname": "expense_date",
    "fieldtype": "Date",
-   "label": "Expense Date",
-   "reqd": 1,
-   "bold": 0,
    "in_list_view": 1,
-   "in_filter": 0,
-   "read_only": 0,
-   "hidden": 0
+   "label": "Expense Date",
+   "reqd": 1
   },
   {
    "fieldname": "cb_1",
@@ -67,57 +59,38 @@
   {
    "fieldname": "expense_category",
    "fieldtype": "Select",
-   "label": "Category",
-   "reqd": 1,
-   "bold": 0,
    "in_list_view": 1,
-   "in_filter": 0,
-   "read_only": 0,
-   "hidden": 0,
-   "options": "\nEmergency Purchase\nEquipment Repair\nTransport\nAdditional Labor\nReplacement Items\nOther"
+   "label": "Category",
+   "options": "\nEmergency Purchase\nEquipment Repair\nTransport\nAdditional Labor\nReplacement Items\nOther",
+   "reqd": 1
   },
   {
    "fieldname": "company",
    "fieldtype": "Link",
    "label": "Company",
-   "reqd": 0,
-   "bold": 0,
-   "in_list_view": 0,
-   "in_filter": 0,
-   "read_only": 0,
-   "hidden": 0,
    "options": "Company"
   },
   {
    "fieldname": "supplier",
    "fieldtype": "Link",
    "label": "Supplier",
-   "reqd": 0,
-   "bold": 0,
-   "in_list_view": 0,
-   "in_filter": 0,
-   "read_only": 0,
-   "hidden": 0,
    "options": "Supplier"
   },
   {
+   "default": "Pending",
    "fieldname": "approval_status",
    "fieldtype": "Select",
-   "label": "Approval Status",
-   "reqd": 0,
-   "bold": 0,
-   "in_list_view": 1,
    "in_filter": 1,
-   "read_only": 0,
-   "hidden": 0,
-   "options": "\nPending\nApproved\nRejected",
-   "default": "Pending"
+   "in_list_view": 1,
+   "label": "Approval Status",
+   "options": "\nPending\nApproved\nRejected"
   },
   {
    "fieldname": "workflow_state",
-   "fieldtype": "Workflow State",
+   "fieldtype": "Link",
    "label": "Workflow State",
    "no_copy": 1,
+   "options": "Workflow State",
    "print_hide": 1,
    "read_only": 1
   },
@@ -125,222 +98,168 @@
    "fieldname": "approved_by",
    "fieldtype": "Link",
    "label": "Approved By",
-   "reqd": 0,
-   "bold": 0,
-   "in_list_view": 0,
-   "in_filter": 0,
-   "read_only": 1,
-   "hidden": 0,
-   "options": "User"
+   "options": "User",
+   "read_only": 1
   },
   {
+   "bold": 1,
    "fieldname": "total_amount",
    "fieldtype": "Currency",
-   "label": "Total Amount",
-   "reqd": 0,
-   "bold": 1,
    "in_list_view": 1,
-   "in_filter": 0,
-   "read_only": 1,
-   "hidden": 0
+   "label": "Total Amount",
+   "read_only": 1
   },
   {
    "fieldname": "expense_items_sb",
    "fieldtype": "Section Break",
-   "label": "Expense Items",
-   "collapsible": 0
+   "label": "Expense Items"
   },
   {
    "fieldname": "items",
    "fieldtype": "Table",
    "label": "Items",
-   "reqd": 0,
-   "bold": 0,
-   "in_list_view": 0,
-   "in_filter": 0,
-   "read_only": 0,
-   "hidden": 0,
    "options": "Catering Emergency Expense Item"
   },
   {
+   "collapsible": 1,
    "fieldname": "accounting_sb",
    "fieldtype": "Section Break",
-   "label": "Accounting",
-   "collapsible": 1
+   "label": "Accounting"
   },
   {
    "fieldname": "expense_account",
    "fieldtype": "Link",
    "label": "Expense Account",
-   "reqd": 0,
-   "bold": 0,
-   "in_list_view": 0,
-   "in_filter": 0,
-   "read_only": 0,
-   "hidden": 0,
    "options": "Account"
   },
   {
    "fieldname": "journal_entry",
    "fieldtype": "Link",
    "label": "Journal Entry",
-   "reqd": 0,
-   "bold": 0,
-   "in_list_view": 0,
-   "in_filter": 0,
-   "read_only": 1,
-   "hidden": 0,
-   "options": "Journal Entry"
+   "options": "Journal Entry",
+   "read_only": 1
   },
   {
+   "collapsible": 1,
    "fieldname": "notes_sb",
    "fieldtype": "Section Break",
-   "label": "Notes",
-   "collapsible": 1
+   "label": "Notes"
   },
   {
    "fieldname": "justification",
    "fieldtype": "Text",
    "label": "Justification",
-   "reqd": 1,
-   "bold": 0,
-   "in_list_view": 0,
-   "in_filter": 0,
-   "read_only": 0,
-   "hidden": 0
+   "reqd": 1
   },
   {
    "fieldname": "notes",
    "fieldtype": "Text",
-   "label": "Notes",
-   "reqd": 0,
-   "bold": 0,
-   "in_list_view": 0,
-   "in_filter": 0,
-   "read_only": 0,
-   "hidden": 0
+   "label": "Notes"
+  },
+  {
+   "fieldname": "amended_from",
+   "fieldtype": "Link",
+   "label": "Amended From",
+   "no_copy": 1,
+   "options": "Catering Emergency Expense",
+   "print_hide": 1,
+   "read_only": 1,
+   "search_index": 1
   }
  ],
  "is_submittable": 1,
- "issingle": 0,
- "istable": 0,
  "links": [],
- "modified": "2024-01-01 00:00:00.000000",
+ "modified": "2026-05-11 00:30:18.459517",
  "modified_by": "Administrator",
  "module": "Catering Management",
  "name": "Catering Emergency Expense",
- "naming_series": "CAT-EE-.YYYY.-.####",
  "owner": "Administrator",
  "permissions": [
   {
+   "amend": 1,
+   "cancel": 1,
+   "create": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
    "role": "Catering Manager",
-   "read": 1,
-   "write": 1,
-   "create": 1,
-   "delete": 0,
-   "submit": 1,
-   "cancel": 1,
-   "amend": 1,
-   "report": 1,
-   "export": 1,
    "share": 1,
-   "print": 1,
-   "email": 1
+   "submit": 1,
+   "write": 1
   },
   {
+   "amend": 1,
+   "cancel": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
    "role": "Catering Finance Manager",
-   "read": 1,
-   "write": 1,
-   "create": 0,
-   "delete": 0,
-   "submit": 1,
-   "cancel": 1,
-   "amend": 1,
-   "report": 1,
-   "export": 1,
    "share": 1,
-   "print": 1,
-   "email": 1
+   "submit": 1,
+   "write": 1
   },
   {
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
    "role": "Catering Finance User",
-   "read": 1,
-   "write": 0,
-   "create": 0,
-   "delete": 0,
-   "submit": 0,
-   "cancel": 0,
-   "amend": 0,
-   "report": 1,
-   "export": 1,
-   "share": 1,
-   "print": 1,
-   "email": 1
+   "share": 1
   },
   {
+   "create": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
    "role": "Catering Procurement Manager",
-   "read": 1,
-   "write": 1,
-   "create": 1,
-   "delete": 0,
-   "submit": 0,
-   "cancel": 0,
-   "amend": 0,
-   "report": 1,
-   "export": 1,
    "share": 1,
-   "print": 1,
-   "email": 1
+   "write": 1
   },
   {
+   "create": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
    "role": "Catering Procurement User",
-   "read": 1,
-   "write": 1,
-   "create": 1,
-   "delete": 0,
-   "submit": 0,
-   "cancel": 0,
-   "amend": 0,
-   "report": 1,
-   "export": 1,
    "share": 1,
-   "print": 1,
-   "email": 1
+   "write": 1
   },
   {
-   "role": "Catering Management",
-   "read": 1,
-   "write": 1,
-   "create": 1,
-   "delete": 0,
-   "submit": 1,
-   "cancel": 1,
    "amend": 1,
-   "report": 1,
+   "cancel": 1,
+   "create": 1,
+   "email": 1,
    "export": 1,
-   "share": 1,
    "print": 1,
-   "email": 1
+   "read": 1,
+   "report": 1,
+   "role": "Catering Management",
+   "share": 1,
+   "submit": 1,
+   "write": 1
   },
   {
-   "role": "Catering Auditor",
-   "read": 1,
-   "write": 0,
-   "create": 0,
-   "delete": 0,
-   "submit": 0,
-   "cancel": 0,
-   "amend": 0,
-   "report": 1,
+   "email": 1,
    "export": 1,
-   "share": 1,
    "print": 1,
-   "email": 1
+   "read": 1,
+   "report": 1,
+   "role": "Catering Auditor",
+   "share": 1
   }
  ],
+ "row_format": "Dynamic",
  "sort_field": "modified",
  "sort_order": "DESC",
  "states": [],
- "track_changes": 1,
- "autoname": "naming_series:"
+ "track_changes": 1
 }

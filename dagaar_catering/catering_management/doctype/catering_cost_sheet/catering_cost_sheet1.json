@@ -1,0 +1,295 @@
+{
+ "actions": [],
+ "autoname": "naming_series:",
+ "creation": "2024-01-01 00:00:00",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "naming_series",
+  "catering_order",
+  "customer",
+  "col_break_1",
+  "event_date",
+  "total_guests",
+  "company",
+  "cost_sheet_date",
+  "food_costs_sb",
+  "food_cost",
+  "beverage_cost",
+  "snacks_cost",
+  "packaging_cost",
+  "col_break_2",
+  "labor_cost",
+  "delivery_cost",
+  "rental_cost",
+  "overhead_cost",
+  "totals_sb",
+  "total_cost",
+  "total_revenue",
+  "col_break_3",
+  "gross_profit",
+  "gross_margin_percent",
+  "cost_breakdown_items_sb",
+  "items",
+  "notes_sb",
+  "notes",
+  "reviewed_by",
+  "amended_from"
+ ],
+ "fields": [
+  {
+   "fieldname": "naming_series",
+   "fieldtype": "Select",
+   "label": "Series",
+   "options": "CCS-.YYYY.-.####",
+   "reqd": 1
+  },
+  {
+   "bold": 1,
+   "fieldname": "catering_order",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "label": "Catering Order",
+   "options": "Catering Order",
+   "reqd": 1
+  },
+  {
+   "fieldname": "customer",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Customer",
+   "read_only": 1
+  },
+  {
+   "fieldname": "col_break_1",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "event_date",
+   "fieldtype": "Date",
+   "in_list_view": 1,
+   "label": "Event Date",
+   "read_only": 1
+  },
+  {
+   "fieldname": "total_guests",
+   "fieldtype": "Int",
+   "label": "Total Guests",
+   "read_only": 1
+  },
+  {
+   "fieldname": "company",
+   "fieldtype": "Link",
+   "label": "Company",
+   "options": "Company"
+  },
+  {
+   "fieldname": "cost_sheet_date",
+   "fieldtype": "Date",
+   "label": "Date",
+   "reqd": 1
+  },
+  {
+   "fieldname": "food_costs_sb",
+   "fieldtype": "Section Break",
+   "label": "Food Costs"
+  },
+  {
+   "fieldname": "food_cost",
+   "fieldtype": "Currency",
+   "in_list_view": 1,
+   "label": "Food Cost"
+  },
+  {
+   "fieldname": "beverage_cost",
+   "fieldtype": "Currency",
+   "label": "Beverage Cost"
+  },
+  {
+   "fieldname": "snacks_cost",
+   "fieldtype": "Currency",
+   "label": "Snacks Cost"
+  },
+  {
+   "fieldname": "packaging_cost",
+   "fieldtype": "Currency",
+   "label": "Packaging Cost"
+  },
+  {
+   "fieldname": "col_break_2",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "labor_cost",
+   "fieldtype": "Currency",
+   "label": "Labor Cost"
+  },
+  {
+   "fieldname": "delivery_cost",
+   "fieldtype": "Currency",
+   "label": "Delivery Cost"
+  },
+  {
+   "fieldname": "rental_cost",
+   "fieldtype": "Currency",
+   "label": "Equipment/Rental Cost"
+  },
+  {
+   "fieldname": "overhead_cost",
+   "fieldtype": "Currency",
+   "label": "Overhead Cost"
+  },
+  {
+   "fieldname": "totals_sb",
+   "fieldtype": "Section Break",
+   "label": "Totals"
+  },
+  {
+   "bold": 1,
+   "fieldname": "total_cost",
+   "fieldtype": "Currency",
+   "in_list_view": 1,
+   "label": "Total Cost",
+   "read_only": 1
+  },
+  {
+   "fieldname": "total_revenue",
+   "fieldtype": "Currency",
+   "label": "Total Revenue",
+   "read_only": 1
+  },
+  {
+   "fieldname": "col_break_3",
+   "fieldtype": "Column Break"
+  },
+  {
+   "bold": 1,
+   "fieldname": "gross_profit",
+   "fieldtype": "Currency",
+   "label": "Gross Profit",
+   "read_only": 1
+  },
+  {
+   "bold": 1,
+   "fieldname": "gross_margin_percent",
+   "fieldtype": "Percent",
+   "in_list_view": 1,
+   "label": "Gross Margin %",
+   "read_only": 1
+  },
+  {
+   "collapsible": 1,
+   "fieldname": "cost_breakdown_items_sb",
+   "fieldtype": "Section Break",
+   "label": "Cost Breakdown Items"
+  },
+  {
+   "fieldname": "items",
+   "fieldtype": "Table",
+   "label": "Cost Items",
+   "options": "Catering Cost Sheet Item"
+  },
+  {
+   "collapsible": 1,
+   "fieldname": "notes_sb",
+   "fieldtype": "Section Break",
+   "label": "Notes"
+  },
+  {
+   "fieldname": "notes",
+   "fieldtype": "Text",
+   "label": "Notes"
+  },
+  {
+   "fieldname": "reviewed_by",
+   "fieldtype": "Link",
+   "label": "Reviewed By",
+   "options": "User"
+  },
+  {
+   "fieldname": "amended_from",
+   "fieldtype": "Link",
+   "label": "Amended From",
+   "no_copy": 1,
+   "options": "Catering Cost Sheet",
+   "print_hide": 1,
+   "read_only": 1,
+   "search_index": 1
+  }
+ ],
+ "is_submittable": 1,
+ "links": [],
+ "modified": "2026-05-06 00:12:46.027122",
+ "modified_by": "Administrator",
+ "module": "Catering Management",
+ "name": "Catering Cost Sheet",
+ "naming_rule": "By \"Naming Series\" field",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "amend": 1,
+   "cancel": 1,
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Catering Manager",
+   "share": 1,
+   "submit": 1,
+   "write": 1
+  },
+  {
+   "amend": 1,
+   "cancel": 1,
+   "create": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Catering Finance Manager",
+   "share": 1,
+   "submit": 1,
+   "write": 1
+  },
+  {
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Catering Finance User",
+   "share": 1
+  },
+  {
+   "create": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Catering Management",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Catering Auditor",
+   "share": 1
+  }
+ ],
+ "row_format": "Dynamic",
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "title_field": "catering_order",
+ "track_changes": 1
+}

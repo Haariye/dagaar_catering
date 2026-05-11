@@ -1,7 +1,7 @@
 {
  "actions": [],
  "autoname": "naming_series:",
- "creation": "2024-01-01 00:00:00.000000",
+ "creation": "2024-01-01 00:00:00",
  "doctype": "DocType",
  "editable_grid": 1,
  "engine": "InnoDB",
@@ -54,6 +54,7 @@
   "deposit_percent",
   "deposit_amount",
   "deposit_received",
+  "bypass_deposit",
   "total_paid",
   "balance_due",
   "payment_schedule_sb",
@@ -97,83 +98,73 @@
  "fields": [
   {
    "fieldname": "profitability_html",
-   "label": "Profitability",
-   "fieldtype": "HTML"
+   "fieldtype": "HTML",
+   "label": "Profitability"
   },
   {
+   "default": "COR-.YYYY.-",
    "fieldname": "naming_series",
-   "fieldtype": "Data",
+   "fieldtype": "Select",
    "label": "Series",
-   "reqd": 1,
-   "bold": 0,
-   "in_list_view": 0,
-   "in_filter": 0,
-   "read_only": 0,
-   "hidden": 0
+   "options": "COR-.YYYY.-\nCATERING-.YYYY.-",
+   "reqd": 1
   },
   {
    "fieldname": "order_details_sb",
    "fieldtype": "Section Break",
-   "label": "Order Details",
-   "collapsible": 0
+   "label": "Order Details"
   },
   {
+   "bold": 1,
    "fieldname": "customer",
    "fieldtype": "Link",
-   "label": "Customer",
-   "reqd": 1,
-   "bold": 1,
-   "in_list_view": 1,
    "in_filter": 1,
-   "read_only": 0,
-   "hidden": 0,
-   "options": "Customer"
+   "in_list_view": 1,
+   "label": "Customer",
+   "options": "Customer",
+   "reqd": 1
   },
   {
+   "fetch_from": "customer.customer_name",
    "fieldname": "customer_name",
    "fieldtype": "Data",
-   "label": "Customer Name",
-   "reqd": 0,
-   "bold": 0,
    "in_list_view": 1,
-   "in_filter": 0,
-   "read_only": 1,
-   "hidden": 0,
-   "fetch_from": "customer.customer_name"
-  },
-  {
-   "fieldname": "customer_group",
-   "label": "Customer Group",
-   "fieldtype": "Link",
-   "options": "Customer Group",
-   "fetch_from": "customer.customer_group",
+   "label": "Customer Name",
    "read_only": 1
   },
   {
-   "fieldname": "territory",
-   "label": "Territory",
+   "fetch_from": "customer.customer_group",
+   "fieldname": "customer_group",
    "fieldtype": "Link",
-   "options": "Territory",
+   "label": "Customer Group",
+   "options": "Customer Group",
+   "read_only": 1
+  },
+  {
    "fetch_from": "customer.territory",
+   "fieldname": "territory",
+   "fieldtype": "Link",
+   "label": "Territory",
+   "options": "Territory",
    "read_only": 1
   },
   {
    "fieldname": "contact_person",
-   "label": "Contact Person",
    "fieldtype": "Link",
+   "label": "Contact Person",
    "options": "Contact"
   },
   {
    "fieldname": "contact_email",
-   "label": "Contact Email",
    "fieldtype": "Data",
+   "label": "Contact Email",
    "options": "Email",
    "read_only": 1
   },
   {
    "fieldname": "contact_mobile",
-   "label": "Contact Mobile",
    "fieldtype": "Data",
+   "label": "Contact Mobile",
    "options": "Phone",
    "read_only": 1
   },
@@ -182,28 +173,22 @@
    "fieldtype": "Column Break"
   },
   {
+   "bold": 1,
+   "default": "Draft",
    "fieldname": "status",
    "fieldtype": "Select",
-   "label": "Status",
-   "reqd": 1,
-   "bold": 1,
-   "in_list_view": 1,
    "in_filter": 1,
-   "read_only": 0,
-   "hidden": 0,
-   "options": "\nDraft\nPending Approval\nApproved\nConfirmed\nSales Order Created\nDeposit Received\nIn Production\nReady for Delivery\nDelivered\nInvoiced\nClosed\nCancelled",
-   "default": "Draft"
+   "in_list_view": 1,
+   "label": "Status",
+   "options": "Draft\nPending Approval\nApproved\nQuoted\nConfirmed\nSales Order Created\nDeposit Received\nInvoiced\nPaid\nIn Production\nReady for Delivery\nReady to Deliver\nDelivered\nClosed\nCancelled",
+   "reqd": 1
   },
   {
    "fieldname": "workflow_state",
    "fieldtype": "Data",
+   "hidden": 1,
    "label": "Workflow State",
-   "reqd": 0,
-   "bold": 0,
-   "in_list_view": 0,
-   "in_filter": 0,
-   "read_only": 1,
-   "hidden": 1
+   "read_only": 1
   },
   {
    "fieldname": "workflow_progress_section",
@@ -212,47 +197,32 @@
   },
   {
    "fieldname": "workflow_dashboard",
-   "label": "Progress",
-   "fieldtype": "HTML"
+   "fieldtype": "HTML",
+   "label": "Progress"
   },
   {
    "fieldname": "event_information_sb",
    "fieldtype": "Section Break",
-   "label": "Event Information",
-   "collapsible": 0
+   "label": "Event Information"
   },
   {
+   "bold": 1,
    "fieldname": "event_date",
    "fieldtype": "Date",
-   "label": "Event Date",
-   "reqd": 1,
-   "bold": 1,
-   "in_list_view": 1,
    "in_filter": 1,
-   "read_only": 0,
-   "hidden": 0
+   "in_list_view": 1,
+   "label": "Event Date",
+   "reqd": 1
   },
   {
    "fieldname": "event_end_date",
    "fieldtype": "Date",
-   "label": "Event End Date",
-   "reqd": 0,
-   "bold": 0,
-   "in_list_view": 0,
-   "in_filter": 0,
-   "read_only": 0,
-   "hidden": 0
+   "label": "Event End Date"
   },
   {
    "fieldname": "event_type",
    "fieldtype": "Select",
    "label": "Event Type",
-   "reqd": 0,
-   "bold": 0,
-   "in_list_view": 0,
-   "in_filter": 0,
-   "read_only": 0,
-   "hidden": 0,
    "options": "\nWedding\nCorporate\nBirthday\nConference\nGala Dinner\nPrivate Party\nOutdoor Event\nOther"
   },
   {
@@ -263,365 +233,246 @@
    "fieldname": "event_location",
    "fieldtype": "Data",
    "label": "Event Location",
-   "reqd": 1,
-   "bold": 0,
-   "in_list_view": 0,
-   "in_filter": 0,
-   "read_only": 0,
-   "hidden": 0
+   "reqd": 1
   },
   {
    "fieldname": "event_address",
    "fieldtype": "Small Text",
-   "label": "Full Address",
-   "reqd": 0,
-   "bold": 0,
-   "in_list_view": 0,
-   "in_filter": 0,
-   "read_only": 0,
-   "hidden": 0
+   "label": "Full Address"
   },
   {
    "fieldname": "package_guests_sb",
    "fieldtype": "Section Break",
-   "label": "Package & Guests",
-   "collapsible": 0
+   "label": "Package & Guests"
   },
   {
+   "bold": 1,
    "fieldname": "package_type",
    "fieldtype": "Select",
-   "label": "Package Type",
-   "reqd": 1,
-   "bold": 1,
-   "in_list_view": 1,
    "in_filter": 1,
-   "read_only": 0,
-   "hidden": 0,
-   "options": "\nBuffet\nPlated\nCocktail\nBoxed Meals\nStation\nCustom"
+   "in_list_view": 1,
+   "label": "Package Type",
+   "options": "\nBuffet\nPlated\nCocktail\nBoxed Meals\nStation\nCustom",
+   "reqd": 1
   },
   {
    "fieldname": "menu_package",
    "fieldtype": "Link",
    "label": "Menu Package",
-   "reqd": 0,
-   "bold": 0,
-   "in_list_view": 0,
-   "in_filter": 0,
-   "read_only": 0,
-   "hidden": 0,
    "options": "Catering Menu Package"
   },
   {
+   "fetch_from": "menu_package.price_per_guest",
    "fieldname": "price_per_guest",
-   "label": "Price per Guest",
    "fieldtype": "Currency",
-   "options": "currency",
-   "fetch_from": "menu_package.price_per_guest"
+   "label": "Price per Guest",
+   "options": "currency"
   },
   {
    "fieldname": "cb_642169",
    "fieldtype": "Column Break"
   },
   {
+   "bold": 1,
    "fieldname": "total_guests",
    "fieldtype": "Int",
-   "label": "Total Guests",
-   "reqd": 1,
-   "bold": 1,
    "in_list_view": 1,
-   "in_filter": 0,
-   "read_only": 0,
-   "hidden": 0
+   "label": "Total Guests",
+   "reqd": 1
   },
   {
+   "default": "0",
    "fieldname": "vip_guests",
    "fieldtype": "Int",
-   "label": "VIP Guests",
-   "reqd": 0,
-   "bold": 0,
-   "in_list_view": 0,
-   "in_filter": 0,
-   "read_only": 0,
-   "hidden": 0,
-   "default": "0"
+   "label": "VIP Guests"
   },
   {
+   "default": "0",
    "fieldname": "children_guests",
    "fieldtype": "Int",
-   "label": "Children",
-   "reqd": 0,
-   "bold": 0,
-   "in_list_view": 0,
-   "in_filter": 0,
-   "read_only": 0,
-   "hidden": 0,
-   "default": "0"
+   "label": "Children"
   },
   {
+   "default": "0",
    "fieldname": "staff_guests",
    "fieldtype": "Int",
-   "label": "Staff/Crew",
-   "reqd": 0,
-   "bold": 0,
-   "in_list_view": 0,
-   "in_filter": 0,
-   "read_only": 0,
-   "hidden": 0,
-   "default": "0"
+   "label": "Staff/Crew"
   },
   {
    "fieldname": "menu_items_sb",
    "fieldtype": "Section Break",
-   "label": "Menu Items",
-   "collapsible": 0
+   "label": "Menu Items"
   },
   {
    "fieldname": "items",
    "fieldtype": "Table",
    "label": "Menu Items",
-   "reqd": 0,
-   "bold": 0,
-   "in_list_view": 0,
-   "in_filter": 0,
-   "read_only": 0,
-   "hidden": 0,
    "options": "Catering Order Item"
   },
   {
    "fieldname": "guest_types",
    "fieldtype": "Table",
    "label": "Guest Type Breakdown",
-   "reqd": 0,
-   "bold": 0,
-   "in_list_view": 0,
-   "in_filter": 0,
-   "read_only": 0,
-   "hidden": 0,
    "options": "Catering Order Guest Type"
   },
   {
    "fieldname": "financial_summary_sb",
    "fieldtype": "Section Break",
-   "label": "Financial Summary",
-   "collapsible": 0
+   "label": "Financial Summary"
   },
   {
    "fieldname": "subtotal",
    "fieldtype": "Currency",
    "label": "Subtotal",
-   "reqd": 0,
-   "bold": 0,
-   "in_list_view": 0,
-   "in_filter": 0,
-   "read_only": 1,
-   "hidden": 0
+   "read_only": 1
   },
   {
+   "default": "0",
    "fieldname": "discount_percent",
    "fieldtype": "Percent",
-   "label": "Discount %",
-   "reqd": 0,
-   "bold": 0,
-   "in_list_view": 0,
-   "in_filter": 0,
-   "read_only": 0,
-   "hidden": 0,
-   "default": "0"
+   "label": "Discount %"
   },
   {
    "fieldname": "discount_amount",
    "fieldtype": "Currency",
    "label": "Discount Amount",
-   "reqd": 0,
-   "bold": 0,
-   "in_list_view": 0,
-   "in_filter": 0,
-   "read_only": 1,
-   "hidden": 0
+   "read_only": 1
   },
   {
    "fieldname": "cb_719619",
    "fieldtype": "Column Break"
   },
   {
+   "bold": 1,
    "fieldname": "total_order_value",
    "fieldtype": "Currency",
-   "label": "Total Order Value",
-   "reqd": 0,
-   "bold": 1,
    "in_list_view": 1,
-   "in_filter": 0,
-   "read_only": 1,
-   "hidden": 0
+   "label": "Total Order Value",
+   "read_only": 1
   },
   {
    "fieldname": "currency",
    "fieldtype": "Link",
    "label": "Currency",
-   "reqd": 1,
-   "bold": 0,
-   "in_list_view": 0,
-   "in_filter": 0,
-   "read_only": 0,
-   "hidden": 0,
-   "options": "Currency"
+   "options": "Currency",
+   "reqd": 1
   },
   {
-   "fieldname": "conversion_rate",
-   "label": "Exchange Rate",
-   "fieldtype": "Float",
    "default": "1",
+   "fieldname": "conversion_rate",
+   "fieldtype": "Float",
+   "label": "Exchange Rate",
    "precision": "9"
   },
   {
    "fieldname": "price_list",
-   "label": "Price List",
    "fieldtype": "Link",
+   "label": "Price List",
    "options": "Price List"
   },
   {
    "fieldname": "tax_template",
-   "label": "Tax Template",
    "fieldtype": "Link",
+   "label": "Tax Template",
    "options": "Sales Taxes and Charges Template"
   },
   {
    "fieldname": "total_taxes",
-   "label": "Total Taxes",
    "fieldtype": "Currency",
+   "label": "Total Taxes",
    "options": "currency",
    "read_only": 1
   },
   {
+   "default": "30",
    "fieldname": "deposit_percent",
    "fieldtype": "Percent",
-   "label": "Deposit Required %",
-   "reqd": 0,
-   "bold": 0,
-   "in_list_view": 0,
-   "in_filter": 0,
-   "read_only": 0,
-   "hidden": 0,
-   "default": "30"
+   "label": "Deposit Required %"
   },
   {
    "fieldname": "deposit_amount",
    "fieldtype": "Currency",
    "label": "Deposit Amount",
-   "reqd": 0,
-   "bold": 0,
-   "in_list_view": 0,
-   "in_filter": 0,
-   "read_only": 1,
-   "hidden": 0
+   "read_only": 1
   },
   {
    "fieldname": "deposit_received",
    "fieldtype": "Currency",
    "label": "Deposit Received",
-   "reqd": 0,
-   "bold": 0,
-   "in_list_view": 0,
-   "in_filter": 0,
-   "read_only": 1,
-   "hidden": 0
+   "read_only": 1
+  },
+  {
+   "default": "0",
+   "description": "Skip deposit requirement for production. Only Catering Manager / Catering Management roles can enable this.",
+   "fieldname": "bypass_deposit",
+   "fieldtype": "Check",
+   "label": "Bypass Deposit Requirement (Manager Only)"
   },
   {
    "fieldname": "total_paid",
-   "label": "Total Paid",
    "fieldtype": "Currency",
+   "label": "Total Paid",
    "options": "currency",
    "read_only": 1
   },
   {
+   "bold": 1,
    "fieldname": "balance_due",
-   "label": "Balance Due",
    "fieldtype": "Currency",
+   "label": "Balance Due",
    "options": "currency",
-   "read_only": 1,
-   "bold": 1
+   "read_only": 1
   },
   {
    "fieldname": "payment_schedule_sb",
    "fieldtype": "Section Break",
-   "label": "Payment Schedule",
-   "collapsible": 0
+   "label": "Payment Schedule"
   },
   {
    "fieldname": "payment_schedule",
    "fieldtype": "Table",
    "label": "Payment Schedule",
-   "reqd": 0,
-   "bold": 0,
-   "in_list_view": 0,
-   "in_filter": 0,
-   "read_only": 0,
-   "hidden": 0,
    "options": "Catering Order Payment Schedule"
   },
   {
    "fieldname": "operational_details_sb",
    "fieldtype": "Section Break",
-   "label": "Operational Details",
-   "collapsible": 0
+   "label": "Operational Details"
   },
   {
    "fieldname": "company",
    "fieldtype": "Link",
    "label": "Company",
-   "reqd": 1,
-   "bold": 0,
-   "in_list_view": 0,
-   "in_filter": 0,
-   "read_only": 0,
-   "hidden": 0,
-   "options": "Company"
+   "options": "Company",
+   "reqd": 1
   },
   {
    "fieldname": "branch",
    "fieldtype": "Data",
-   "label": "Branch",
-   "reqd": 0,
-   "bold": 0,
-   "in_list_view": 0,
-   "in_filter": 0,
-   "read_only": 0,
-   "hidden": 0
+   "label": "Branch"
   },
   {
    "fieldname": "cost_center",
    "fieldtype": "Link",
    "label": "Cost Center",
-   "reqd": 0,
-   "bold": 0,
-   "in_list_view": 0,
-   "in_filter": 0,
-   "read_only": 0,
-   "hidden": 0,
    "options": "Cost Center"
   },
   {
    "fieldname": "income_account",
-   "label": "Income Account",
    "fieldtype": "Link",
+   "label": "Income Account",
    "options": "Account"
   },
   {
    "fieldname": "advance_account",
-   "label": "Advance Account",
    "fieldtype": "Link",
+   "label": "Advance Account",
    "options": "Account"
   },
   {
    "fieldname": "project",
    "fieldtype": "Link",
    "label": "Project",
-   "reqd": 0,
-   "bold": 0,
-   "in_list_view": 0,
-   "in_filter": 0,
-   "read_only": 0,
-   "hidden": 0,
    "options": "Project"
   },
   {
@@ -631,136 +482,78 @@
   {
    "fieldname": "service_start_time",
    "fieldtype": "Time",
-   "label": "Service Start Time",
-   "reqd": 0,
-   "bold": 0,
-   "in_list_view": 0,
-   "in_filter": 0,
-   "read_only": 0,
-   "hidden": 0
+   "label": "Service Start Time"
   },
   {
    "fieldname": "service_end_time",
    "fieldtype": "Time",
-   "label": "Service End Time",
-   "reqd": 0,
-   "bold": 0,
-   "in_list_view": 0,
-   "in_filter": 0,
-   "read_only": 0,
-   "hidden": 0
+   "label": "Service End Time"
   },
   {
    "fieldname": "setup_hours_required",
    "fieldtype": "Float",
-   "label": "Setup Hours Required",
-   "reqd": 0,
-   "bold": 0,
-   "in_list_view": 0,
-   "in_filter": 0,
-   "read_only": 0,
-   "hidden": 0
+   "label": "Setup Hours Required"
   },
   {
    "fieldname": "assigned_manager",
    "fieldtype": "Link",
    "label": "Assigned Manager",
-   "reqd": 0,
-   "bold": 0,
-   "in_list_view": 0,
-   "in_filter": 0,
-   "read_only": 0,
-   "hidden": 0,
    "options": "User"
   },
   {
    "fieldname": "special_requirements_sb",
    "fieldtype": "Section Break",
-   "label": "Special Requirements",
-   "collapsible": 0
+   "label": "Special Requirements"
   },
   {
    "fieldname": "dietary_requirements",
    "fieldtype": "Small Text",
-   "label": "Dietary Requirements",
-   "reqd": 0,
-   "bold": 0,
-   "in_list_view": 0,
-   "in_filter": 0,
-   "read_only": 0,
-   "hidden": 0
+   "label": "Dietary Requirements"
   },
   {
    "fieldname": "allergen_notes",
    "fieldtype": "Small Text",
-   "label": "Allergen Notes",
-   "reqd": 0,
-   "bold": 0,
-   "in_list_view": 0,
-   "in_filter": 0,
-   "read_only": 0,
-   "hidden": 0
+   "label": "Allergen Notes"
   },
   {
    "fieldname": "special_instructions",
    "fieldtype": "Text",
-   "label": "Special Instructions",
-   "reqd": 0,
-   "bold": 0,
-   "in_list_view": 0,
-   "in_filter": 0,
-   "read_only": 0,
-   "hidden": 0
+   "label": "Special Instructions"
   },
   {
+   "collapsible": 1,
    "fieldname": "linked_documents_sb",
    "fieldtype": "Section Break",
-   "label": "Linked Documents",
-   "collapsible": 1
+   "label": "Linked Documents"
   },
   {
    "fieldname": "quotation",
    "fieldtype": "Link",
    "label": "Quotation",
-   "reqd": 0,
-   "bold": 0,
-   "in_list_view": 0,
-   "in_filter": 0,
-   "read_only": 1,
-   "hidden": 0,
-   "options": "Quotation"
+   "options": "Quotation",
+   "read_only": 1
   },
   {
    "fieldname": "sales_order",
    "fieldtype": "Link",
    "label": "Sales Order",
-   "reqd": 0,
-   "bold": 0,
-   "in_list_view": 0,
-   "in_filter": 0,
-   "read_only": 1,
-   "hidden": 0,
-   "options": "Sales Order"
+   "options": "Sales Order",
+   "read_only": 1
   },
   {
    "fieldname": "sales_invoice",
    "fieldtype": "Link",
    "label": "Sales Invoice",
-   "reqd": 0,
-   "bold": 0,
-   "in_list_view": 0,
-   "in_filter": 0,
-   "read_only": 1,
-   "hidden": 0,
-   "options": "Sales Invoice"
+   "options": "Sales Invoice",
+   "read_only": 1
   },
   {
    "fieldname": "delivery_note",
-   "label": "Delivery Note",
    "fieldtype": "Link",
+   "label": "Delivery Note",
+   "no_copy": 1,
    "options": "Delivery Note",
-   "read_only": 1,
-   "no_copy": 1
+   "read_only": 1
   },
   {
    "fieldname": "cb_000745",
@@ -770,37 +563,22 @@
    "fieldname": "production_plan",
    "fieldtype": "Link",
    "label": "Production Plan",
-   "reqd": 0,
-   "bold": 0,
-   "in_list_view": 0,
-   "in_filter": 0,
-   "read_only": 1,
-   "hidden": 0,
-   "options": "Catering Production Plan"
+   "options": "Catering Production Plan",
+   "read_only": 1
   },
   {
    "fieldname": "cost_sheet",
    "fieldtype": "Link",
    "label": "Cost Sheet",
-   "reqd": 0,
-   "bold": 0,
-   "in_list_view": 0,
-   "in_filter": 0,
-   "read_only": 1,
-   "hidden": 0,
-   "options": "Catering Cost Sheet"
+   "options": "Catering Cost Sheet",
+   "read_only": 1
   },
   {
    "fieldname": "closing_sheet",
    "fieldtype": "Link",
    "label": "Closing Sheet",
-   "reqd": 0,
-   "bold": 0,
-   "in_list_view": 0,
-   "in_filter": 0,
-   "read_only": 1,
-   "hidden": 0,
-   "options": "Catering Closing Sheet"
+   "options": "Catering Closing Sheet",
+   "read_only": 1
   },
   {
    "fieldname": "cb_212760",
@@ -810,235 +588,168 @@
    "fieldname": "purchase_order",
    "fieldtype": "Link",
    "label": "Purchase Order",
-   "reqd": 0,
-   "bold": 0,
-   "in_list_view": 0,
-   "in_filter": 0,
-   "read_only": 1,
-   "hidden": 0,
-   "options": "Purchase Order"
+   "options": "Purchase Order",
+   "read_only": 1
   },
   {
    "fieldname": "material_request",
    "fieldtype": "Link",
    "label": "Material Request",
-   "reqd": 0,
-   "bold": 0,
-   "in_list_view": 0,
-   "in_filter": 0,
-   "read_only": 1,
-   "hidden": 0,
-   "options": "Material Request"
+   "options": "Material Request",
+   "read_only": 1
   },
   {
    "fieldname": "delivery_plan",
    "fieldtype": "Link",
    "label": "Delivery Plan",
-   "reqd": 0,
-   "bold": 0,
-   "in_list_view": 0,
-   "in_filter": 0,
-   "read_only": 1,
-   "hidden": 0,
-   "options": "Catering Delivery Plan"
+   "options": "Catering Delivery Plan",
+   "read_only": 1
   },
   {
+   "collapsible": 1,
    "fieldname": "internal_notes_sb",
    "fieldtype": "Section Break",
-   "label": "Internal Notes",
-   "collapsible": 1
+   "label": "Internal Notes"
   },
   {
    "fieldname": "internal_notes",
    "fieldtype": "Text",
-   "label": "Internal Notes",
-   "reqd": 0,
-   "bold": 0,
-   "in_list_view": 0,
-   "in_filter": 0,
-   "read_only": 0,
-   "hidden": 0
+   "label": "Internal Notes"
   },
   {
+   "collapsible": 1,
    "fieldname": "profitability_section",
    "fieldtype": "Section Break",
-   "label": "Profitability Dashboard",
-   "collapsible": 1
+   "label": "Profitability Dashboard"
   },
   {
    "fieldname": "created_by_name",
    "fieldtype": "Data",
    "label": "Created By",
-   "reqd": 0,
-   "bold": 0,
-   "in_list_view": 0,
-   "in_filter": 0,
-   "read_only": 1,
-   "hidden": 0
+   "read_only": 1
   },
   {
    "fieldname": "title",
-   "label": "Title",
    "fieldtype": "Data",
-   "hidden": 1
+   "hidden": 1,
+   "label": "Title"
   },
   {
    "fieldname": "amended_from",
-   "label": "Amended From",
    "fieldtype": "Link",
-   "options": "Catering Order",
+   "label": "Amended From",
    "no_copy": 1,
+   "options": "Catering Order",
    "print_hide": 1,
    "read_only": 1
   }
  ],
  "is_submittable": 1,
- "issingle": 0,
- "istable": 0,
  "links": [],
- "modified": "2024-01-01 00:00:00.000000",
+ "modified": "2026-05-10 14:49:29.994975",
  "modified_by": "Administrator",
  "module": "Catering Management",
  "name": "Catering Order",
- "naming_series": "CAT-ORD-.YYYY.-.####",
  "owner": "Administrator",
  "permissions": [
   {
+   "amend": 1,
+   "cancel": 1,
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
    "role": "Catering Manager",
-   "read": 1,
-   "write": 1,
-   "create": 1,
-   "delete": 1,
-   "submit": 1,
-   "cancel": 1,
-   "amend": 1,
-   "report": 1,
-   "export": 1,
    "share": 1,
-   "print": 1,
-   "email": 1
+   "submit": 1,
+   "write": 1
   },
   {
+   "create": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
    "role": "Catering Finance Manager",
-   "read": 1,
-   "write": 1,
-   "create": 1,
-   "delete": 0,
-   "submit": 0,
-   "cancel": 0,
-   "amend": 0,
-   "report": 1,
-   "export": 1,
    "share": 1,
-   "print": 1,
-   "email": 1
+   "write": 1
   },
   {
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
    "role": "Catering Finance User",
-   "read": 1,
-   "write": 0,
-   "create": 0,
-   "delete": 0,
-   "submit": 0,
-   "cancel": 0,
-   "amend": 0,
-   "report": 1,
-   "export": 1,
-   "share": 1,
-   "print": 1,
-   "email": 1
+   "share": 1
   },
   {
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
    "role": "Catering Kitchen Manager",
-   "read": 1,
-   "write": 0,
-   "create": 0,
-   "delete": 0,
-   "submit": 0,
-   "cancel": 0,
-   "amend": 0,
-   "report": 1,
-   "export": 1,
-   "share": 1,
-   "print": 1,
-   "email": 1
+   "share": 1
   },
   {
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
    "role": "Catering Kitchen User",
-   "read": 1,
-   "write": 0,
-   "create": 0,
-   "delete": 0,
-   "submit": 0,
-   "cancel": 0,
-   "amend": 0,
-   "report": 1,
-   "export": 1,
-   "share": 1,
-   "print": 1,
-   "email": 1
+   "share": 1
   },
   {
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
    "role": "Catering Procurement Manager",
-   "read": 1,
-   "write": 0,
-   "create": 0,
-   "delete": 0,
-   "submit": 0,
-   "cancel": 0,
-   "amend": 0,
-   "report": 1,
-   "export": 1,
-   "share": 1,
-   "print": 1,
-   "email": 1
+   "share": 1
   },
   {
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
    "role": "Catering Delivery User",
-   "read": 1,
-   "write": 0,
-   "create": 0,
-   "delete": 0,
-   "submit": 0,
-   "cancel": 0,
-   "amend": 0,
-   "report": 1,
-   "export": 1,
-   "share": 1,
-   "print": 1,
-   "email": 1
+   "share": 1
   },
   {
-   "role": "Catering Management",
-   "read": 1,
-   "write": 1,
+   "amend": 1,
+   "cancel": 1,
    "create": 1,
    "delete": 1,
-   "submit": 1,
-   "cancel": 1,
-   "amend": 1,
-   "report": 1,
+   "email": 1,
    "export": 1,
-   "share": 1,
    "print": 1,
-   "email": 1
+   "read": 1,
+   "report": 1,
+   "role": "Catering Management",
+   "share": 1,
+   "submit": 1,
+   "write": 1
   },
   {
-   "role": "Catering Auditor",
-   "read": 1,
-   "write": 0,
-   "create": 0,
-   "delete": 0,
-   "submit": 0,
-   "cancel": 0,
-   "amend": 0,
-   "report": 1,
+   "email": 1,
    "export": 1,
-   "share": 1,
    "print": 1,
-   "email": 1
+   "read": 1,
+   "report": 1,
+   "role": "Catering Auditor",
+   "share": 1
   }
  ],
+ "row_format": "Dynamic",
+ "search_fields": "customer,status,event_date",
  "sort_field": "modified",
  "sort_order": "DESC",
  "states": [
@@ -1071,7 +782,6 @@
    "title": "Cancelled"
   }
  ],
- "track_changes": 1,
  "title_field": "customer",
- "search_fields": "customer,status,event_date"
+ "track_changes": 1
 }

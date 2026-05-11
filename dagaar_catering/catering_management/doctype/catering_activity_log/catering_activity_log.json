@@ -18,14 +18,16 @@
  "fields": [
   {
    "fieldname": "naming_series",
-   "fieldtype": "Data",
+   "fieldtype": "Select",
    "label": "Series",
    "reqd": 1,
    "bold": 0,
    "in_list_view": 0,
    "in_filter": 0,
    "read_only": 0,
-   "hidden": 0
+   "hidden": 0,
+   "options": "CAL-.YYYY.-",
+   "default": "CAL-.YYYY.-"
   },
   {
    "fieldname": "catering_order",
@@ -64,7 +66,7 @@
    "in_filter": 0,
    "read_only": 0,
    "hidden": 0,
-   "options": "\nStatus Change\nDocument Created\nPayment Received\nNote Added\nApproval\nRejection\nOther"
+   "options": "Order Created\nOrder Modified\nStatus Change\nDocument Created\nDocument Submitted\nDocument Cancelled\nApproval\nRejection\nPayment Received\nProduction Update\nDelivery Update\nClosing\nNote Added\nOther"
   },
   {
    "fieldname": "user",

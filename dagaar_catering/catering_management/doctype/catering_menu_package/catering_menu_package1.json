@@ -1,0 +1,178 @@
+{
+ "actions": [],
+ "autoname": "field:package_name",
+ "creation": "2024-01-01 00:00:00",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "naming_series",
+  "package_name",
+  "package_type",
+  "cb1",
+  "price_per_guest",
+  "minimum_guests",
+  "maximum_guests",
+  "is_active",
+  "description_sb",
+  "description",
+  "menu_items_sb",
+  "items",
+  "notes_sb",
+  "notes"
+ ],
+ "fields": [
+  {
+   "fieldname": "naming_series",
+   "fieldtype": "Data",
+   "label": "Series"
+  },
+  {
+   "bold": 1,
+   "fieldname": "package_name",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Package Name",
+   "reqd": 1,
+   "unique": 1
+  },
+  {
+   "bold": 1,
+   "fieldname": "package_type",
+   "fieldtype": "Select",
+   "in_filter": 1,
+   "in_list_view": 1,
+   "label": "Package Type",
+   "options": "\nBuffet\nPlated\nCocktail\nBoxed Meals\nStation\nCustom",
+   "reqd": 1
+  },
+  {
+   "fieldname": "cb1",
+   "fieldtype": "Column Break"
+  },
+  {
+   "bold": 1,
+   "fieldname": "price_per_guest",
+   "fieldtype": "Currency",
+   "in_list_view": 1,
+   "label": "Price per Guest",
+   "reqd": 1
+  },
+  {
+   "default": "10",
+   "fieldname": "minimum_guests",
+   "fieldtype": "Int",
+   "label": "Minimum Guests"
+  },
+  {
+   "fieldname": "maximum_guests",
+   "fieldtype": "Int",
+   "label": "Maximum Guests"
+  },
+  {
+   "default": "1",
+   "fieldname": "is_active",
+   "fieldtype": "Check",
+   "label": "Is Active"
+  },
+  {
+   "fieldname": "description_sb",
+   "fieldtype": "Section Break",
+   "label": "Description"
+  },
+  {
+   "fieldname": "description",
+   "fieldtype": "Long Text",
+   "label": "Description"
+  },
+  {
+   "fieldname": "menu_items_sb",
+   "fieldtype": "Section Break",
+   "label": "Menu Items"
+  },
+  {
+   "fieldname": "items",
+   "fieldtype": "Table",
+   "label": "Items",
+   "options": "Catering Menu Package Item"
+  },
+  {
+   "fieldname": "notes_sb",
+   "fieldtype": "Section Break",
+   "label": "Notes"
+  },
+  {
+   "fieldname": "notes",
+   "fieldtype": "Text",
+   "label": "Notes"
+  }
+ ],
+ "links": [],
+ "modified": "2026-05-05 21:47:04.477805",
+ "modified_by": "Administrator",
+ "module": "Catering Management",
+ "name": "Catering Menu Package",
+ "naming_rule": "By fieldname",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Catering Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Catering Kitchen Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Catering Finance User",
+   "share": 1
+  },
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Catering Management",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Catering Auditor",
+   "share": 1
+  }
+ ],
+ "row_format": "Dynamic",
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "title_field": "package_name",
+ "track_changes": 1
+}

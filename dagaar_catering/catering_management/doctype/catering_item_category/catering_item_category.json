@@ -1,0 +1,35 @@
+{
+ "doctype": "DocType",
+ "name": "Catering Item Category",
+ "module": "Catering Management",
+ "engine": "InnoDB",
+ "owner": "Administrator",
+ "creation": "2024-01-01 00:00:00",
+ "modified": "2024-01-01 00:00:00",
+ "modified_by": "Administrator",
+ "is_submittable": 0,
+ "istable": 0,
+ "issingle": 0,
+ "track_changes": 1,
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "naming_rule": "By fieldname",
+ "autoname": "field:category_name",
+ "title_field": "category_name",
+ "field_order": ["category_name", "is_manufactured_default", "requires_production", "default_wastage_percent", "description"],
+ "fields": [
+  {"fieldname": "category_name", "label": "Category Name", "fieldtype": "Data", "reqd": 1, "unique": 1, "in_list_view": 1, "in_global_search": 1},
+  {"fieldname": "is_manufactured_default", "label": "Manufactured by Default", "fieldtype": "Check", "default": "0", "description": "Items in this category are produced in-house"},
+  {"fieldname": "requires_production", "label": "Requires Production Plan", "fieldtype": "Check", "default": "0", "description": "Items in this category need a Production Plan entry", "in_list_view": 1},
+  {"fieldname": "default_wastage_percent", "label": "Default Wastage %", "fieldtype": "Percent", "default": "5"},
+  {"fieldname": "description", "label": "Description", "fieldtype": "Small Text"}
+ ],
+ "permissions": [
+  {"role": "Catering Manager", "read": 1, "write": 1, "create": 1, "delete": 1, "print": 1, "email": 1, "export": 1, "report": 1},
+  {"role": "Catering Sales User", "read": 1, "report": 1},
+  {"role": "Catering Auditor", "read": 1, "report": 1, "print": 1, "export": 1},
+  {"role": "Catering Management", "read": 1, "write": 1, "create": 1, "delete": 1, "print": 1, "email": 1, "export": 1, "report": 1},
+  {"role": "System Manager", "read": 1, "write": 1, "create": 1, "delete": 1, "print": 1, "email": 1, "export": 1, "report": 1, "share": 1}
+ ],
+ "links": []
+}

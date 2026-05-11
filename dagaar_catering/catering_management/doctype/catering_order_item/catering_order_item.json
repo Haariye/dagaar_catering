@@ -52,7 +52,7 @@
   },
   {
    "fieldname": "category",
-   "fieldtype": "Select",
+   "fieldtype": "Link",
    "label": "Category",
    "reqd": 0,
    "bold": 0,
@@ -60,7 +60,7 @@
    "in_filter": 0,
    "read_only": 0,
    "hidden": 0,
-   "options": "\nFood\nBeverage\nSnacks\nDessert\nPackaging\nService\nOther"
+   "options": "Catering Item Category"
   },
   {
    "fieldname": "qty_per_guest",

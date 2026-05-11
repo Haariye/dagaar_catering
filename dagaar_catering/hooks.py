@@ -66,6 +66,10 @@ doc_events = {
     },
 
     # ── Hook ERPNext document events to update Catering Order automatically ──
+    "Quotation": {
+        "on_submit": "dagaar_catering.catering_management.controllers.linkers.update_quotation_status",
+        "on_cancel": "dagaar_catering.catering_management.controllers.linkers.update_quotation_status",
+    },
     "Sales Order": {
         "on_submit": "dagaar_catering.catering_management.controllers.linkers.update_so_status",
         "on_cancel": "dagaar_catering.catering_management.controllers.linkers.update_so_status",

@@ -17,6 +17,39 @@ from frappe import _
 from frappe.utils import flt, getdate, today, add_days, now_datetime, get_link_to_form, cint
 
 
+
+
+# ════════════════════════════════════════════════════════════════════════════
+# DEFENSIVE SQL HELPERS
+# ════════════════════════════════════════════════════════════════════════════
+
+def _safe_sum_with_catering_link(table_name, column, catering_order, extra_where=""):
+	"""SUM a column from an ERPNext table where catering_order matches.
+
+	Returns 0 silently if the catering_order column doesn't exist on that table
+	(e.g., if the Custom Field patch hasn't run yet).
+	"""
+	try:
+		# Check column exists first
+		col_exists = frappe.db.sql(
+			"""SELECT COUNT(*) FROM information_schema.columns
+			   WHERE table_schema = DATABASE()
+			     AND table_name = %s
+			     AND column_name = 'catering_order'""",
+			table_name,
+		)[0][0] > 0
+		if not col_exists:
+			return 0
+		where = f"docstatus = 1 AND catering_order = %s {extra_where}"
+		row = frappe.db.sql(
+			f"SELECT IFNULL(SUM({column}), 0) FROM `{table_name}` WHERE {where}",
+			catering_order,
+		)
+		return flt(row[0][0]) if row else 0
+	except Exception:
+		return 0
+
+
 # ════════════════════════════════════════════════════════════════════════════
 # DOCUMENT LIFECYCLE HOOKS
 # ════════════════════════════════════════════════════════════════════════════
@@ -324,66 +357,145 @@ def _log_activity(doc, activity_type, description, ref_dt=None, ref_name=None):
 		pass
 
 
+
+
+
+
+
+def _set_naming_series(target_doc, doctype):
+	"""Set naming_series on the target document.
+
+	Strategy: try to use whatever naming_series the user has configured
+	on their site. If the doctype's naming_series field has options, use the
+	first one. Otherwise fall back to a sensible default that matches ERPNext v15.
+
+	If even that fails (doctype rejects the value), we set autoname=hash so
+	Frappe generates a unique name automatically.
+	"""
+	if not target_doc:
+		return
+
+	try:
+		meta = frappe.get_meta(doctype)
+		field = meta.get_field("naming_series")
+	except Exception:
+		field = None
+
+	# If the doctype has no naming_series field, nothing to set
+	if not field:
+		return
+
+	# Step 1: Get options from the doctype field
+	series_to_try = []
+	if field.options:
+		series_to_try = [x.strip() for x in field.options.split("\n") if x.strip()]
+
+	# Step 2: If no options on the field, look in `tabSeries` for any series
+	# that has actually been used for this doctype (i.e., already issued names)
+	if not series_to_try:
+		try:
+			# Search tabSeries for any prefix that has been used before
+			used = frappe.db.sql(
+				"""SELECT name, current FROM tabSeries
+				   WHERE current > 0 LIMIT 5"""
+			)
+			# We don't know which is for which doctype, so just collect prefixes
+			# that look reasonable
+		except Exception:
+			pass
+
+	# Step 3: Hardcoded ERPNext v15 defaults as last resort
+	if not series_to_try:
+		fallbacks = {
+			"Quotation":        "QTN-.YYYY.-",
+			"Sales Order":      "SAL-ORD-.YYYY.-",
+			"Sales Invoice":    "ACC-SINV-.YYYY.-",
+			"Payment Entry":    "ACC-PAY-.YYYY.-",
+			"Journal Entry":    "ACC-JV-.YYYY.-",
+			"Delivery Note":    "MAT-DN-.YYYY.-",
+			"Material Request": "MAT-MR-.YYYY.-",
+			"Purchase Order":   "PUR-ORD-.YYYY.-",
+			"Purchase Invoice": "ACC-PINV-.YYYY.-",
+			"Work Order":       "MFG-WO-.YYYY.-",
+			"Stock Entry":      "MAT-STE-.YYYY.-",
+		}
+		if doctype in fallbacks:
+			series_to_try = [fallbacks[doctype]]
+
+	# Set the first available series
+	if series_to_try:
+		target_doc.naming_series = series_to_try[0]
+
+
+def _ensure_naming_series_option(doctype, series):
+	"""Add `series` to the naming_series field options if not already there.
+
+	This makes the value valid for the doctype, so Frappe accepts it on insert.
+	Uses Property Setter so the change is permanent.
+	"""
+	try:
+		meta = frappe.get_meta(doctype)
+		field = meta.get_field("naming_series")
+		if not field:
+			return
+		current_options = (field.options or "").split("\n")
+		current_options = [x.strip() for x in current_options if x.strip()]
+		if series in current_options:
+			return  # already there
+
+		# Append the series to the options list
+		new_options = current_options + [series]
+		new_options_str = "\n".join(new_options)
+
+		# Use Property Setter to persist the change
+		ps_name = f"{doctype}-naming_series-options"
+		if frappe.db.exists("Property Setter", ps_name):
+			frappe.db.set_value("Property Setter", ps_name, "value", new_options_str)
+		else:
+			ps = frappe.new_doc("Property Setter")
+			ps.doctype_or_field = "DocField"
+			ps.doc_type = doctype
+			ps.field_name = "naming_series"
+			ps.property = "options"
+			ps.value = new_options_str
+			ps.property_type = "Text"
+			ps.flags.ignore_permissions = True
+			ps.insert(ignore_permissions=True)
+		# Clear cache so the change is picked up
+		frappe.clear_cache(doctype=doctype)
+	except Exception:
+		pass
+
+
+def _create_doc_with_naming(doctype):
+	"""Create a new doc and ensure its naming_series is set to a valid value.
+
+	Combines _set_naming_series + _ensure_naming_series_option for bulletproof creation.
+	"""
+	doc = frappe.new_doc(doctype)
+	# Step 1: pick a series
+	_set_naming_series(doc, doctype)
+	# Step 2: make sure that series is in the doctype's options
+	if doc.get("naming_series"):
+		_ensure_naming_series_option(doctype, doc.naming_series)
+	return doc
+
+
 # ════════════════════════════════════════════════════════════════════════════
 # WHITELISTED ACTIONS
 # ════════════════════════════════════════════════════════════════════════════
 
-@frappe.whitelist()
-def create_quotation(catering_order):
-	co = frappe.get_doc("Catering Order", catering_order)
-	if co.docstatus == 2:
-		frappe.throw(_("Cannot create documents from a cancelled Catering Order."))
-	if co.quotation:
-		frappe.throw(_("Quotation {0} already exists for this Catering Order.").format(co.quotation))
-	if not co.items:
-		frappe.throw(_("Add items to the Catering Order before creating a Quotation."))
-
-	qt = frappe.new_doc("Quotation")
-	qt.quotation_to = "Customer"
-	qt.party_name = co.customer
-	qt.customer_name = co.customer_name
-	qt.transaction_date = today()
-	qt.valid_till = add_days(today(), 30)
-	qt.company = co.company
-	qt.cost_center = co.cost_center
-	qt.project = co.project
-	qt.currency = co.currency
-	qt.conversion_rate = flt(co.conversion_rate) or 1
-	qt.selling_price_list = co.price_list
-	qt.catering_order = co.name
-
-	for it in co.items:
-		qt.append("items", {
-			"item_code": it.item_code,
-			"item_name": it.item_name,
-			"qty": flt(it.total_qty) or 1,
-			"rate": flt(it.rate),
-			"uom": it.uom,
-			"cost_center": co.cost_center,
-		})
-
-	if co.tax_template:
-		qt.taxes_and_charges = co.tax_template
-		_apply_tax_template(qt, co.tax_template, "Sales Taxes and Charges Template")
-
-	qt.flags.ignore_permissions = True
-	qt.insert()
-	frappe.db.set_value("Catering Order", catering_order, "quotation", qt.name)
-	_log_activity(co, "Document Created", f"Quotation {qt.name} created", "Quotation", qt.name)
-	frappe.msgprint(_("Quotation {0} created").format(get_link_to_form("Quotation", qt.name)),
-		indicator="green", alert=True)
-	return qt.name
-
 
 @frappe.whitelist()
-def create_sales_order(catering_order):
+def create_sales_order(catering_order, auto_submit=0):
+	"""Create Sales Order from Catering Order."""
 	co = frappe.get_doc("Catering Order", catering_order)
 	if co.sales_order:
 		frappe.throw(_("Sales Order {0} already exists.").format(co.sales_order))
 	if not co.items:
 		frappe.throw(_("Add items before creating a Sales Order."))
 
-	so = frappe.new_doc("Sales Order")
+	so = _create_doc_with_naming("Sales Order")
 	so.customer = co.customer
 	so.transaction_date = today()
 	so.delivery_date = co.event_date
@@ -412,228 +524,52 @@ def create_sales_order(catering_order):
 
 	so.flags.ignore_permissions = True
 	so.insert()
+
+	if cint(auto_submit):
+		try:
+			so.submit()
+		except Exception as e:
+			frappe.msgprint(_("Sales Order {0} created but auto-submit failed: {1}").format(
+				so.name, str(e)[:200]), indicator="orange")
+
 	frappe.db.set_value("Catering Order", catering_order, {"sales_order": so.name, "status": "Confirmed"})
 	_log_activity(co, "Document Created", f"Sales Order {so.name} created", "Sales Order", so.name)
-	frappe.msgprint(_("Sales Order {0} created").format(get_link_to_form("Sales Order", so.name)),
-		indicator="green", alert=True)
+	frappe.msgprint(_("Sales Order {0} {1}").format(
+		get_link_to_form("Sales Order", so.name),
+		"created and submitted" if cint(auto_submit) else "created"
+	), indicator="green", alert=True)
 	return so.name
 
 
 @frappe.whitelist()
-def create_deposit_payment(catering_order):
+def get_sales_invoice_defaults(catering_order):
+	"""Return defaults for the Sales Invoice popup dialog."""
 	co = frappe.get_doc("Catering Order", catering_order)
-	if not flt(co.deposit_amount):
-		frappe.throw(_("Deposit Amount is zero. Set Deposit % first."))
-	remaining = flt(co.deposit_amount) - flt(co.deposit_received)
-	if remaining <= 0:
-		frappe.throw(_("Deposit already fully received."))
+	if co.sales_invoice:
+		return {"error": f"Sales Invoice {co.sales_invoice} already exists for this order."}
+	if not co.sales_order:
+		return {"error": "Create a Sales Order first."}
 
-	pe = frappe.new_doc("Payment Entry")
-	pe.payment_type = "Receive"
-	pe.party_type = "Customer"
-	pe.party = co.customer
-	pe.posting_date = today()
-	pe.company = co.company
-	pe.cost_center = co.cost_center
-	pe.project = co.project
-	pe.catering_order = co.name
-	pe.paid_amount = remaining
-	pe.received_amount = remaining
-	pe.reference_no = f"Deposit-{co.name}"
-	pe.reference_date = today()
-
-	if co.advance_account:
-		pe.paid_to = co.advance_account
-		pe.paid_to_account_currency = co.currency
-
-	pe.flags.ignore_permissions = True
-	pe.insert()
-	_log_activity(co, "Document Created", f"Deposit Payment Entry {pe.name} created", "Payment Entry", pe.name)
-	frappe.msgprint(_("Payment Entry {0} created — review, set bank account and submit").format(
-		get_link_to_form("Payment Entry", pe.name)), indicator="green", alert=True)
-	return pe.name
-
-
-@frappe.whitelist()
-def create_cost_sheet(catering_order):
-	co = frappe.get_doc("Catering Order", catering_order)
-	existing = frappe.db.get_value("Catering Cost Sheet",
-		{"catering_order": catering_order, "docstatus": ["!=", 2]}, "name")
-	if existing:
-		frappe.throw(_("Cost Sheet {0} already exists.").format(existing))
-
-	cs = frappe.new_doc("Catering Cost Sheet")
-	cs.catering_order = catering_order
-	cs.cost_sheet_date = today()
-	cs.company = co.company
-	cs.branch = co.branch
-	cs.currency = co.currency
-
-	category_map = {
-		"Food": "Food Cost", "Beverage": "Beverage Cost",
-		"Snacks": "Snacks/Packaging", "Dessert": "Snacks/Packaging",
-		"Service": "Labor Cost", "Packaging": "Snacks/Packaging",
-		"Other": "Other",
+	return {
+		"customer": co.customer,
+		"customer_name": co.customer_name,
+		"posting_date": today(),
+		"due_date": add_days(today(), 30),
+		"company": co.company,
+		"currency": co.currency,
+		"grand_total": flt(co.total_order_value),
+		"suggested_discount": 0,
 	}
 
-	for it in co.items:
-		cs.append("items", {
-			"category": category_map.get(it.category, "Other"),
-			"description": it.item_name,
-			"item_code": it.item_code,
-			"qty": flt(it.total_qty),
-			"rate": flt(it.raw_material_cost) or flt(it.rate) * 0.6,
-			"currency": co.currency,
-		})
-
-	cs.flags.ignore_permissions = True
-	cs.insert()
-	frappe.db.set_value("Catering Order", catering_order, "cost_sheet", cs.name)
-	_log_activity(co, "Document Created", f"Cost Sheet {cs.name} created", "Catering Cost Sheet", cs.name)
-	frappe.msgprint(_("Cost Sheet {0} created").format(
-		get_link_to_form("Catering Cost Sheet", cs.name)), indicator="green", alert=True)
-	return cs.name
-
 
 @frappe.whitelist()
-def create_production_plan(catering_order):
-	co = frappe.get_doc("Catering Order", catering_order)
-	settings = _get_settings()
-
-	if settings:
-		if cint(settings.require_so_before_production) and not co.sales_order:
-			frappe.throw(_("Sales Order is required before creating a Production Plan. Create Sales Order first."))
-		if cint(settings.require_deposit_before_production):
-			if flt(co.deposit_received) < flt(co.deposit_amount) and flt(co.deposit_amount) > 0:
-				frappe.throw(_("Deposit of {0} {1} required before Production. Received: {2}").format(
-					co.currency, co.deposit_amount, co.deposit_received))
-
-	existing = frappe.db.get_value("Catering Production Plan",
-		{"catering_order": catering_order, "docstatus": ["!=", 2]}, "name")
-	if existing:
-		frappe.throw(_("Production Plan {0} already exists.").format(existing))
-
-	pp = frappe.new_doc("Catering Production Plan")
-	pp.catering_order = catering_order
-	pp.company = co.company
-	pp.planned_start_date = add_days(co.event_date, -2) if co.event_date else today()
-	pp.planned_end_date = co.event_date
-
-	if settings:
-		pp.source_warehouse = settings.default_source_warehouse
-		pp.wip_warehouse = settings.default_wip_warehouse
-		pp.fg_warehouse = settings.default_fg_warehouse
-
-	for it in co.items:
-		if it.is_manufactured or (it.category in ("Food", "Beverage", "Snacks", "Dessert")):
-			pp.append("items", {
-				"item_code": it.item_code,
-				"item_name": it.item_name,
-				"bom": it.bom,
-				"planned_qty": flt(it.total_qty),
-				"uom": it.uom,
-				"wip_warehouse": pp.wip_warehouse,
-				"fg_warehouse": pp.fg_warehouse,
-				"status": "Pending",
-			})
-
-	pp.flags.ignore_permissions = True
-	pp.insert()
-	frappe.db.set_value("Catering Order", catering_order,
-		{"production_plan": pp.name, "status": "In Production"})
-	_log_activity(co, "Document Created", f"Production Plan {pp.name} created",
-		"Catering Production Plan", pp.name)
-	frappe.msgprint(_("Production Plan {0} created").format(
-		get_link_to_form("Catering Production Plan", pp.name)), indicator="green", alert=True)
-	return pp.name
-
-
-@frappe.whitelist()
-def create_material_request(catering_order):
-	co = frappe.get_doc("Catering Order", catering_order)
-
-	required_items = _calculate_raw_materials(co)
-	if not required_items:
-		for it in co.items:
-			if it.item_code:
-				required_items[it.item_code] = {
-					"qty": flt(it.total_qty),
-					"uom": it.uom,
-					"item_name": it.item_name,
-				}
-
-	if not required_items:
-		frappe.throw(_("No items found to create Material Request."))
-
-	mr = frappe.new_doc("Material Request")
-	mr.material_request_type = "Purchase"
-	mr.transaction_date = today()
-	mr.schedule_date = add_days(co.event_date, -3) if co.event_date else add_days(today(), 3)
-	mr.company = co.company
-	mr.cost_center = co.cost_center
-	mr.project = co.project
-	mr.catering_order = co.name
-
-	for item_code, info in required_items.items():
-		mr.append("items", {
-			"item_code": item_code,
-			"item_name": info.get("item_name"),
-			"qty": info["qty"],
-			"uom": info.get("uom"),
-			"schedule_date": mr.schedule_date,
-			"cost_center": co.cost_center,
-			"project": co.project,
-		})
-
-	mr.flags.ignore_permissions = True
-	mr.insert()
-	frappe.db.set_value("Catering Order", catering_order, "material_request", mr.name)
-	_log_activity(co, "Document Created", f"Material Request {mr.name} created",
-		"Material Request", mr.name)
-	frappe.msgprint(_("Material Request {0} created").format(
-		get_link_to_form("Material Request", mr.name)), indicator="green", alert=True)
-	return mr.name
-
-
-def _calculate_raw_materials(co):
-	required = {}
-	for it in co.items:
-		if not it.bom:
-			continue
-		try:
-			bom = frappe.get_cached_doc("BOM", it.bom)
-			multiplier = flt(it.total_qty) / flt(bom.quantity or 1)
-			for ri in bom.items:
-				code = ri.item_code
-				qty_needed = flt(ri.qty) * multiplier
-				if code in required:
-					required[code]["qty"] += qty_needed
-				else:
-					required[code] = {
-						"qty": qty_needed,
-						"uom": ri.uom or ri.stock_uom,
-						"item_name": ri.item_name,
-					}
-		except frappe.DoesNotExistError:
-			continue
-	return required
-
-
-@frappe.whitelist()
-def create_sales_invoice(catering_order):
+def create_sales_invoice(catering_order, additional_discount=None, auto_submit=0):
+	"""Create Sales Invoice with optional additional discount."""
 	co = frappe.get_doc("Catering Order", catering_order)
 	if co.sales_invoice:
 		frappe.throw(_("Sales Invoice {0} already exists.").format(co.sales_invoice))
 
-	settings = _get_settings()
-	if settings and cint(settings.require_delivery_before_invoice):
-		dn = frappe.db.get_value("Delivery Note", {"catering_order": catering_order, "docstatus": 1}, "name")
-		dp = frappe.db.get_value("Catering Delivery Plan",
-			{"catering_order": catering_order, "status": "Delivered"}, "name")
-		if not dn and not dp:
-			frappe.throw(_("Delivery must be confirmed before creating a Sales Invoice."))
-
-	si = frappe.new_doc("Sales Invoice")
+	si = _create_doc_with_naming("Sales Invoice")
 	si.customer = co.customer
 	si.posting_date = today()
 	si.due_date = add_days(today(), 30)
@@ -664,43 +600,444 @@ def create_sales_invoice(catering_order):
 		for item in si.items:
 			item.sales_order = co.sales_order
 
+	# Apply additional discount from popup
+	if additional_discount and flt(additional_discount) > 0:
+		si.apply_discount_on = "Grand Total"
+		si.discount_amount = flt(additional_discount)
+
 	si.flags.ignore_permissions = True
 	si.insert()
+
+	if cint(auto_submit):
+		try:
+			si.submit()
+		except Exception as e:
+			frappe.msgprint(_("Sales Invoice {0} created but auto-submit failed: {1}").format(
+				si.name, str(e)[:200]), indicator="orange")
+
 	frappe.db.set_value("Catering Order", catering_order,
 		{"sales_invoice": si.name, "status": "Invoiced"})
 	_log_activity(co, "Document Created", f"Sales Invoice {si.name} created",
 		"Sales Invoice", si.name)
-	frappe.msgprint(_("Sales Invoice {0} created").format(
-		get_link_to_form("Sales Invoice", si.name)), indicator="green", alert=True)
+	frappe.msgprint(_("Sales Invoice {0} {1}").format(
+		get_link_to_form("Sales Invoice", si.name),
+		"created and submitted" if cint(auto_submit) else "created"
+	), indicator="green", alert=True)
 	return si.name
 
 
 @frappe.whitelist()
+def get_payment_defaults(catering_order):
+	"""Return defaults for the Payment Entry popup."""
+	co = frappe.get_doc("Catering Order", catering_order)
+	if not co.sales_invoice:
+		return {"error": "Create the Sales Invoice first. Payments must reconcile against an Invoice."}
+
+	si_data = frappe.db.get_value("Sales Invoice", co.sales_invoice,
+		["grand_total", "outstanding_amount", "currency", "debit_to", "docstatus"], as_dict=True) or {}
+
+	if si_data.get("docstatus") != 1:
+		return {"error": "Sales Invoice must be submitted before recording payments."}
+
+	if flt(si_data.get("outstanding_amount", 0)) <= 0:
+		return {"error": "Sales Invoice is already fully paid."}
+
+	settings = _get_settings()
+	mode_of_payment = (settings.default_mode_of_payment if settings else None) or \
+		frappe.db.get_value("Mode of Payment", {"enabled": 1}, "name")
+	paid_to = co.advance_account or \
+		(settings.default_bank_account if settings else None) or \
+		(settings.default_advance_account if settings else None) or \
+		frappe.db.get_value("Company", co.company, "default_bank_account") or \
+		frappe.db.get_value("Company", co.company, "default_cash_account")
+
+	return {
+		"sales_invoice": co.sales_invoice,
+		"invoice_grand_total": flt(si_data.get("grand_total", 0)),
+		"invoice_outstanding": flt(si_data.get("outstanding_amount", 0)),
+		"currency": si_data.get("currency", co.currency),
+		"suggested_amount": flt(si_data.get("outstanding_amount", 0)),
+		"mode_of_payment": mode_of_payment,
+		"paid_to": paid_to,
+		"reference_no_default": f"PAY-{co.name}",
+		"reference_date_default": today(),
+	}
+
+
+@frappe.whitelist()
+def create_payment_entry(catering_order, paid_amount=None, mode_of_payment=None,
+						 paid_to=None, reference_no=None, reference_date=None,
+						 auto_submit=0):
+	"""Create Payment Entry that reconciles against the Sales Invoice."""
+	co = frappe.get_doc("Catering Order", catering_order)
+	if not co.sales_invoice:
+		frappe.throw(_("Create the Sales Invoice first. Payments must reconcile against an Invoice."))
+
+	si = frappe.get_doc("Sales Invoice", co.sales_invoice)
+	if si.docstatus != 1:
+		frappe.throw(_("Sales Invoice must be submitted before recording payments."))
+	if flt(si.outstanding_amount) <= 0:
+		frappe.throw(_("Sales Invoice {0} is already fully paid.").format(co.sales_invoice))
+
+	settings = _get_settings()
+
+	amount = flt(paid_amount) if paid_amount else flt(si.outstanding_amount)
+	if amount <= 0:
+		frappe.throw(_("Payment amount must be greater than zero."))
+	if amount > flt(si.outstanding_amount):
+		frappe.throw(_("Payment amount {0} exceeds outstanding {1}.").format(
+			amount, si.outstanding_amount))
+
+	if not mode_of_payment:
+		mode_of_payment = (settings.default_mode_of_payment if settings else None) or \
+			frappe.db.get_value("Mode of Payment", {"enabled": 1}, "name") or \
+			frappe.db.get_value("Mode of Payment", {}, "name")
+	if not mode_of_payment:
+		frappe.throw(_("No Mode of Payment configured. Set Default Mode of Payment in Catering Settings."))
+
+	if not paid_to:
+		if co.advance_account:
+			paid_to = co.advance_account
+		elif settings and settings.default_bank_account:
+			paid_to = settings.default_bank_account
+		elif settings and settings.default_advance_account:
+			paid_to = settings.default_advance_account
+		else:
+			try:
+				mop_doc = frappe.get_doc("Mode of Payment", mode_of_payment)
+				for row in (mop_doc.accounts or []):
+					if row.company == co.company:
+						paid_to = row.default_account
+						break
+			except Exception:
+				pass
+	if not paid_to:
+		paid_to = frappe.db.get_value("Company", co.company, "default_bank_account") or \
+			frappe.db.get_value("Company", co.company, "default_cash_account")
+	if not paid_to:
+		frappe.throw(_("Could not determine Paid To account. Set 'Default Bank/Cash Account' in Catering Settings."))
+
+	paid_from = si.debit_to or \
+		(settings.default_receivable_account if settings else None) or \
+		frappe.db.get_value("Company", co.company, "default_receivable_account")
+
+	company_currency = frappe.db.get_value("Company", co.company, "default_currency") or "USD"
+	order_currency = co.currency or company_currency
+
+	pe = _create_doc_with_naming("Payment Entry")
+	pe.payment_type = "Receive"
+	pe.party_type = "Customer"
+	pe.party = co.customer
+	pe.posting_date = reference_date or today()
+	pe.company = co.company
+	pe.cost_center = co.cost_center
+	pe.project = co.project
+	pe.catering_order = co.name
+	pe.mode_of_payment = mode_of_payment
+	pe.paid_to = paid_to
+	if paid_from:
+		pe.paid_from = paid_from
+	pe.paid_from_account_currency = order_currency
+	pe.paid_to_account_currency = order_currency
+	pe.source_exchange_rate = 1.0
+	pe.target_exchange_rate = 1.0
+	pe.paid_amount = amount
+	pe.received_amount = amount
+	pe.base_paid_amount = amount
+	pe.base_received_amount = amount
+	pe.reference_no = reference_no or f"PAY-{co.name}"
+	pe.reference_date = reference_date or today()
+
+	pe.append("references", {
+		"reference_doctype": "Sales Invoice",
+		"reference_name": co.sales_invoice,
+		"total_amount": flt(si.grand_total),
+		"outstanding_amount": flt(si.outstanding_amount),
+		"allocated_amount": amount,
+	})
+
+	pe.flags.ignore_permissions = True
+	pe.insert()
+
+	if cint(auto_submit):
+		try:
+			pe.submit()
+		except Exception as e:
+			frappe.msgprint(_("Payment Entry {0} created but auto-submit failed: {1}").format(
+				pe.name, str(e)[:200]), indicator="orange")
+			return pe.name
+
+	_log_activity(co, "Document Created", f"Payment Entry {pe.name} created", "Payment Entry", pe.name)
+	frappe.msgprint(_("Payment Entry {0} {1}").format(
+		get_link_to_form("Payment Entry", pe.name),
+		"created and submitted" if cint(auto_submit) else "created — review and submit"
+	), indicator="green", alert=True)
+	return pe.name
+
+
+def _get_total_paid(catering_order):
+	"""Get total received from all submitted Payment Entries for this catering order."""
+	co = frappe.get_doc("Catering Order", catering_order)
+	total = 0.0
+
+	# Direct payments (catering_order field)
+	direct = _safe_sum_with_catering_link(
+		"tabPayment Entry", "paid_amount", catering_order,
+		"AND payment_type = 'Receive'"
+	)
+	total += flt(direct)
+
+	# Payments via Sales Invoice references (avoid double-count by excluding ones already counted)
+	if co.sales_invoice:
+		try:
+			via_invoice = frappe.db.sql("""
+				SELECT IFNULL(SUM(per.allocated_amount), 0)
+				FROM `tabPayment Entry` pe
+				INNER JOIN `tabPayment Entry Reference` per ON per.parent = pe.name
+				WHERE pe.docstatus = 1
+				  AND pe.payment_type = 'Receive'
+				  AND per.reference_doctype = 'Sales Invoice'
+				  AND per.reference_name = %s
+				  AND (pe.catering_order IS NULL OR pe.catering_order != %s)
+			""", (co.sales_invoice, catering_order))
+			if via_invoice and via_invoice[0]:
+				total += flt(via_invoice[0][0])
+		except Exception:
+			pass
+
+	return total
+
+
+@frappe.whitelist()
+def create_cost_sheet(catering_order):
+	"""Create Cost Sheet — auto-aggregates costs from ERPNext on save."""
+	co = frappe.get_doc("Catering Order", catering_order)
+	existing = frappe.db.get_value("Catering Cost Sheet",
+		{"catering_order": catering_order, "docstatus": ["!=", 2]}, "name")
+	if existing:
+		frappe.throw(_("Cost Sheet {0} already exists.").format(existing))
+
+	cs = _create_doc_with_naming("Catering Cost Sheet")
+	cs.catering_order = catering_order
+	cs.cost_sheet_date = today()
+	cs.company = co.company
+	cs.branch = co.branch
+	cs.currency = co.currency
+
+	cs.flags.ignore_permissions = True
+	cs.insert()
+	frappe.db.set_value("Catering Order", catering_order, "cost_sheet", cs.name)
+	_log_activity(co, "Document Created", f"Cost Sheet {cs.name} created", "Catering Cost Sheet", cs.name)
+	frappe.msgprint(_("Cost Sheet {0} created. Costs will auto-populate on save.").format(
+		get_link_to_form("Catering Cost Sheet", cs.name)), indicator="green", alert=True)
+	return cs.name
+
+
+@frappe.whitelist()
+def create_production_plan(catering_order):
+	"""Create Production Plan. Requires invoice + minimum payment %."""
+	co = frappe.get_doc("Catering Order", catering_order)
+	settings = _get_settings()
+
+	if not co.sales_invoice:
+		frappe.throw(_("Create a Sales Invoice before starting Production. The invoice anchors all costs and payments."))
+
+	if not cint(co.get("bypass_deposit")):
+		total_paid = _get_total_paid(catering_order)
+		invoice_total = flt(co.total_order_value)
+
+		min_percent = 30.0
+		if settings and flt(settings.get("minimum_payment_percent_for_production")):
+			min_percent = flt(settings.minimum_payment_percent_for_production)
+
+		required_min = invoice_total * min_percent / 100
+
+		if total_paid < required_min:
+			frappe.throw(_(
+				"Minimum payment of {0}% ({1} {2}) required before Production. "
+				"Currently received: {3} {2}. "
+				"Collect more payment or have a Manager enable 'Bypass Deposit Requirement'."
+			).format(
+				min_percent,
+				frappe.utils.fmt_money(required_min, currency=co.currency),
+				co.currency,
+				frappe.utils.fmt_money(total_paid, currency=co.currency)
+			))
+
+	existing = frappe.db.get_value("Catering Production Plan",
+		{"catering_order": catering_order, "docstatus": ["!=", 2]}, "name")
+	if existing:
+		frappe.throw(_("Production Plan {0} already exists.").format(existing))
+
+	pp = _create_doc_with_naming("Catering Production Plan")
+	pp.catering_order = catering_order
+	pp.company = co.company
+	pp.planned_start_date = add_days(co.event_date, -2) if co.event_date else today()
+	pp.planned_end_date = co.event_date
+
+	if settings:
+		pp.source_warehouse = settings.default_source_warehouse
+		pp.wip_warehouse = settings.default_wip_warehouse
+		pp.fg_warehouse = settings.default_fg_warehouse
+
+	# Build a set of categories that require production (from Catering Item Category master)
+	production_categories = set()
+	try:
+		rows = frappe.db.sql("""SELECT name FROM `tabCatering Item Category`
+			WHERE requires_production = 1""", as_dict=True)
+		production_categories = {r.name for r in rows}
+	except Exception:
+		pass
+
+	# First pass: add only items that need production (manufactured OR category requires it)
+	added_count = 0
+	for it in co.items:
+		if it.is_manufactured or (it.category and it.category in production_categories):
+			pp.append("items", {
+				"item_code": it.item_code,
+				"item_name": it.item_name,
+				"bom": it.bom,
+				"planned_qty": flt(it.total_qty),
+				"uom": it.uom,
+				"wip_warehouse": pp.wip_warehouse,
+				"fg_warehouse": pp.fg_warehouse,
+				"status": "Pending",
+			})
+			added_count += 1
+
+	# Fallback: if no items matched the filter, add ALL items (better than empty plan)
+	if added_count == 0:
+		for it in co.items:
+			pp.append("items", {
+				"item_code": it.item_code,
+				"item_name": it.item_name,
+				"bom": it.bom,
+				"planned_qty": flt(it.total_qty),
+				"uom": it.uom,
+				"wip_warehouse": pp.wip_warehouse,
+				"fg_warehouse": pp.fg_warehouse,
+				"status": "Pending",
+			})
+
+	# If still empty, the order itself has no items
+	if not pp.items:
+		frappe.throw(_("Cannot create Production Plan: Catering Order has no items. Add items to the order first."))
+
+	pp.flags.ignore_permissions = True
+	pp.insert()
+	frappe.db.set_value("Catering Order", catering_order,
+		{"production_plan": pp.name, "status": "In Production"})
+	_log_activity(co, "Document Created", f"Production Plan {pp.name} created",
+		"Catering Production Plan", pp.name)
+	frappe.msgprint(_("Production Plan {0} created").format(
+		get_link_to_form("Catering Production Plan", pp.name)), indicator="green", alert=True)
+	return pp.name
+
+
+@frappe.whitelist()
+def create_material_request(catering_order):
+	"""Create Material Request - explodes BOMs to compute raw materials."""
+	co = frappe.get_doc("Catering Order", catering_order)
+	if co.material_request:
+		frappe.throw(_("Material Request {0} already exists.").format(co.material_request))
+
+	required_items = _calculate_raw_materials(co)
+	if not required_items:
+		for it in co.items:
+			if it.item_code:
+				required_items[it.item_code] = {
+					"qty": flt(it.total_qty),
+					"uom": it.uom,
+					"item_name": it.item_name,
+				}
+
+	if not required_items:
+		frappe.throw(_("No items found to create Material Request. Add items to the Catering Order first."))
+
+	mr = _create_doc_with_naming("Material Request")
+	mr.material_request_type = "Purchase"
+	mr.transaction_date = today()
+	# schedule_date must be >= transaction_date (today). Use later of preferred date or today+1.
+	preferred_schedule = add_days(co.event_date, -3) if co.event_date else add_days(today(), 3)
+	min_schedule = today()  # cannot be before transaction date
+	mr.schedule_date = max(getdate(preferred_schedule), getdate(min_schedule))
+	mr.company = co.company
+	mr.cost_center = co.cost_center
+	mr.project = co.project
+	mr.catering_order = co.name
+
+	for item_code, info in required_items.items():
+		mr.append("items", {
+			"item_code": item_code,
+			"item_name": info.get("item_name"),
+			"qty": info["qty"],
+			"uom": info.get("uom"),
+			"schedule_date": mr.schedule_date,
+			"cost_center": co.cost_center,
+			"project": co.project,
+		})
+
+	mr.flags.ignore_permissions = True
+	mr.insert()
+	frappe.db.set_value("Catering Order", catering_order, "material_request", mr.name)
+	_log_activity(co, "Document Created", f"Material Request {mr.name} created",
+		"Material Request", mr.name)
+	frappe.msgprint(_("Material Request {0} created").format(
+		get_link_to_form("Material Request", mr.name)), indicator="green", alert=True)
+	return mr.name
+
+
+def _calculate_raw_materials(co):
+	"""Explode BOMs to compute raw material requirements."""
+	required = {}
+	for it in co.items:
+		if not it.bom:
+			continue
+		try:
+			bom = frappe.get_cached_doc("BOM", it.bom)
+			multiplier = flt(it.total_qty) / flt(bom.quantity or 1)
+			for ri in bom.items:
+				code = ri.item_code
+				qty_needed = flt(ri.qty) * multiplier
+				if code in required:
+					required[code]["qty"] += qty_needed
+				else:
+					required[code] = {
+						"qty": qty_needed,
+						"uom": ri.uom or ri.stock_uom,
+						"item_name": ri.item_name,
+					}
+		except frappe.DoesNotExistError:
+			continue
+	return required
+
+
+@frappe.whitelist()
 def create_delivery_plan(catering_order):
+	"""Create Delivery Plan for the event day."""
 	co = frappe.get_doc("Catering Order", catering_order)
 	if co.delivery_plan:
 		frappe.throw(_("Delivery Plan {0} already exists.").format(co.delivery_plan))
 
 	settings = _get_settings()
 
-	dp = frappe.new_doc("Catering Delivery Plan")
+	dp = _create_doc_with_naming("Catering Delivery Plan")
 	dp.catering_order = catering_order
-	delivery_dt = f"{co.event_date} {co.service_start_time or '12:00:00'}"
-	dp.delivery_datetime = delivery_dt
+	dp.customer = co.customer_name or co.customer
+	dp.delivery_date = co.event_date or today()
+	dp.delivery_time = co.service_start_time or "12:00:00"
 	dp.delivery_address = co.event_address or co.event_location
-	dp.contact_mobile = co.contact_mobile
+	dp.contact_person = co.contact_person or ""
+	dp.contact_phone = co.contact_mobile or ""
 	dp.company = co.company
-	if settings:
-		dp.from_warehouse = settings.default_fg_warehouse
+	dp.status = "Planned"
 
 	for it in co.items:
-		dp.append("items", {
+		dp.append("delivery_items", {
 			"item_code": it.item_code,
 			"item_name": it.item_name,
 			"qty": flt(it.total_qty),
 			"uom": it.uom,
-			"from_warehouse": dp.from_warehouse,
-			"delivery_status": "Pending",
 		})
 
 	dp.flags.ignore_permissions = True
@@ -715,6 +1052,7 @@ def create_delivery_plan(catering_order):
 
 @frappe.whitelist()
 def create_closing_sheet(catering_order):
+	"""Create Closing Sheet — pulls all financial data from linked docs."""
 	co = frappe.get_doc("Catering Order", catering_order)
 	existing = frappe.db.get_value("Catering Closing Sheet",
 		{"catering_order": catering_order, "docstatus": ["!=", 2]}, "name")
@@ -725,20 +1063,15 @@ def create_closing_sheet(catering_order):
 	if settings and cint(settings.require_invoice_before_closure) and not co.sales_invoice:
 		frappe.throw(_("A Sales Invoice is required before creating a Closing Sheet."))
 
-	cs = frappe.new_doc("Catering Closing Sheet")
+	cs = _create_doc_with_naming("Catering Closing Sheet")
 	cs.catering_order = catering_order
 	cs.closing_date = today()
 	cs.company = co.company
 	cs.currency = co.currency
 
 	cs.total_revenue = flt(co.total_order_value)
-	cs.invoiced_amount = flt(frappe.db.sql("""
-		SELECT IFNULL(SUM(grand_total), 0) FROM `tabSales Invoice`
-		WHERE docstatus = 1 AND catering_order = %s""", catering_order)[0][0])
-	cs.payment_received = flt(frappe.db.sql("""
-		SELECT IFNULL(SUM(paid_amount), 0) FROM `tabPayment Entry`
-		WHERE docstatus = 1 AND payment_type = 'Receive' AND catering_order = %s""",
-		catering_order)[0][0])
+	cs.invoiced_amount = _safe_sum_with_catering_link("tabSales Invoice", "grand_total", catering_order)
+	cs.payment_received = _get_total_paid(catering_order)
 	cs.outstanding = cs.invoiced_amount - cs.payment_received
 
 	if co.cost_sheet:
@@ -752,12 +1085,8 @@ def create_closing_sheet(catering_order):
 		except Exception:
 			pass
 
-	cs.total_wastage = flt(frappe.db.sql("""
-		SELECT IFNULL(SUM(total_wastage_value), 0) FROM `tabCatering Wastage Entry`
-		WHERE docstatus = 1 AND catering_order = %s""", catering_order)[0][0])
-	cs.total_emergency_expense = flt(frappe.db.sql("""
-		SELECT IFNULL(SUM(total_amount), 0) FROM `tabCatering Emergency Expense`
-		WHERE docstatus = 1 AND catering_order = %s""", catering_order)[0][0])
+	cs.total_wastage = _safe_sum_with_catering_link("tabCatering Wastage Entry", "total_wastage_value", catering_order)
+	cs.total_emergency_expense = _safe_sum_with_catering_link("tabCatering Emergency Expense", "total_amount", catering_order)
 
 	cs.total_cost = (flt(cs.food_cost) + flt(cs.beverage_cost) + flt(cs.labor_cost)
 					 + flt(cs.delivery_cost) + flt(cs.total_wastage)
@@ -778,6 +1107,7 @@ def create_closing_sheet(catering_order):
 
 @frappe.whitelist()
 def close_catering_order(catering_order):
+	"""Close the Catering Order after Closing Sheet is approved."""
 	co = frappe.get_doc("Catering Order", catering_order)
 	if not co.closing_sheet:
 		frappe.throw(_("Create a Closing Sheet first."))
@@ -799,25 +1129,15 @@ def close_catering_order(catering_order):
 
 @frappe.whitelist()
 def get_profitability(catering_order):
+	"""Return profitability snapshot."""
 	co = frappe.get_doc("Catering Order", catering_order)
 
 	revenue = flt(co.total_order_value)
-	invoiced = flt(frappe.db.sql("""
-		SELECT IFNULL(SUM(grand_total), 0) FROM `tabSales Invoice`
-		WHERE docstatus = 1 AND catering_order = %s""", catering_order)[0][0])
-	paid = flt(frappe.db.sql("""
-		SELECT IFNULL(SUM(paid_amount), 0) FROM `tabPayment Entry`
-		WHERE docstatus = 1 AND payment_type = 'Receive' AND catering_order = %s""",
-		catering_order)[0][0])
-	cost = flt(frappe.db.sql("""
-		SELECT IFNULL(SUM(total_cost), 0) FROM `tabCatering Cost Sheet`
-		WHERE docstatus = 1 AND catering_order = %s""", catering_order)[0][0])
-	wastage = flt(frappe.db.sql("""
-		SELECT IFNULL(SUM(total_wastage_value), 0) FROM `tabCatering Wastage Entry`
-		WHERE docstatus = 1 AND catering_order = %s""", catering_order)[0][0])
-	emergency = flt(frappe.db.sql("""
-		SELECT IFNULL(SUM(total_amount), 0) FROM `tabCatering Emergency Expense`
-		WHERE docstatus = 1 AND catering_order = %s""", catering_order)[0][0])
+	invoiced = _safe_sum_with_catering_link("tabSales Invoice", "grand_total", catering_order)
+	paid = _get_total_paid(catering_order)
+	cost = _safe_sum_with_catering_link("tabCatering Cost Sheet", "total_cost", catering_order)
+	wastage = _safe_sum_with_catering_link("tabCatering Wastage Entry", "total_wastage_value", catering_order)
+	emergency = _safe_sum_with_catering_link("tabCatering Emergency Expense", "total_amount", catering_order)
 
 	total_cost = cost + wastage + emergency
 	profit = revenue - total_cost
@@ -833,10 +1153,11 @@ def get_profitability(catering_order):
 
 
 # ════════════════════════════════════════════════════════════════════════════
-# HELPERS
+# HELPERS (continued)
 # ════════════════════════════════════════════════════════════════════════════
 
 def _apply_tax_template(target_doc, template_name, template_doctype):
+	"""Copy tax rows from a template to target doc."""
 	try:
 		template = frappe.get_doc(template_doctype, template_name)
 		for tax in template.taxes:

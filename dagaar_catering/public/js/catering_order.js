@@ -1,9 +1,9 @@
 // Copyright (c) 2024, DagaarSoft and contributors
 // License: MIT
 //
-// Catering Order — Enterprise Client Script v2.0
-// Provides workflow-driven UI: action buttons, status indicators,
-// profitability dashboard, package auto-load, real-time totals.
+// Catering Order — Enterprise Client Script v2.1
+// Workflow: Sales Order → Sales Invoice → Payment(s) → Production → Closing
+// Smart popup dialogs for SO, SI, Payment Entry creation.
 
 frappe.ui.form.on('Catering Order', {
 
@@ -12,14 +12,13 @@ frappe.ui.form.on('Catering Order', {
 		_render_profitability_card(frm);
 		_setup_action_buttons(frm);
 		_setup_status_indicator(frm);
-		_setup_quick_links(frm);
+		_setup_bypass_visibility(frm);
 	},
 
 	customer: function(frm) {
-		// Auto-fetch customer details
 		if (frm.doc.customer) {
 			frappe.db.get_value('Customer', frm.doc.customer,
-				['customer_name', 'customer_group', 'territory', 'default_currency'], (r) => {
+				['customer_name', 'customer_group', 'territory'], (r) => {
 				if (r) {
 					frm.set_value('customer_name', r.customer_name);
 					frm.set_value('customer_group', r.customer_group);
@@ -32,15 +31,13 @@ frappe.ui.form.on('Catering Order', {
 	menu_package: function(frm) {
 		if (frm.doc.menu_package && frm.doc.docstatus === 0) {
 			frappe.confirm(
-				__('Load items from selected Menu Package? This will replace any existing items.'),
+				__('Load items from selected Menu Package?'),
 				() => {
 					frappe.call({
 						method: 'frappe.client.get',
 						args: { doctype: 'Catering Menu Package', name: frm.doc.menu_package },
 						callback: (r) => {
-							if (r.message) {
-								_load_package_items(frm, r.message);
-							}
+							if (r.message) _load_package_items(frm, r.message);
 						}
 					});
 				}
@@ -49,29 +46,326 @@ frappe.ui.form.on('Catering Order', {
 	},
 
 	total_guests: function(frm) {
-		// Cascade guest count to all items that don't have an override
-		(frm.doc.items || []).forEach((item, idx) => {
-			if (!item.guest_count || item.guest_count === item.__prev_guest_count) {
-				frappe.model.set_value(item.doctype, item.name, 'guest_count', frm.doc.total_guests);
-			}
+		(frm.doc.items || []).forEach((item) => {
+			frappe.model.set_value(item.doctype, item.name, 'guest_count', frm.doc.total_guests);
 		});
-	},
-
-	deposit_percent: function(frm) {
-		const deposit = (frm.doc.total_order_value || 0) * (frm.doc.deposit_percent || 0) / 100;
-		frm.set_value('deposit_amount', deposit);
-	},
-
-	discount_percent: function(frm) {
-		_recalc_totals(frm);
 	},
 });
 
 frappe.ui.form.on('Catering Order Item', {
-	qty_per_guest: function(frm, cdt, cdn) { _recalc_item(frm, cdt, cdn); },
-	guest_count: function(frm, cdt, cdn) { _recalc_item(frm, cdt, cdn); },
-	rate: function(frm, cdt, cdn) { _recalc_item(frm, cdt, cdn); },
+	qty_per_guest: (frm, cdt, cdn) => _recalc_item(frm, cdt, cdn),
+	guest_count: (frm, cdt, cdn) => _recalc_item(frm, cdt, cdn),
+	rate: (frm, cdt, cdn) => _recalc_item(frm, cdt, cdn),
 });
+
+// ════════════════════════════════════════════════════════════════════════════
+// ACTION BUTTONS — workflow-driven visibility
+// ════════════════════════════════════════════════════════════════════════════
+
+function _setup_action_buttons(frm) {
+	if (frm.is_new()) return;
+	if (frm.doc.docstatus === 2) return;
+	if (frm.doc.status === 'Closed') return;
+
+	const d = frm.doc;
+	const has_items = d.items && d.items.length > 0;
+
+	// 1. Create Sales Order — show until SO exists
+	if (!d.sales_order && has_items) {
+		frm.add_custom_button(__('Sales Order'), () => _show_sales_order_dialog(frm), __('Create'));
+	}
+
+	// 2. Create Sales Invoice — show after SO exists, until SI exists
+	if (d.sales_order && !d.sales_invoice) {
+		frm.add_custom_button(__('Sales Invoice'), () => _show_sales_invoice_dialog(frm), __('Create'));
+	}
+
+	// 3. Create Payment Entry — show when SI exists AND not fully paid
+	// Use Catering Order's own total_paid vs total_order_value (kept in sync by linker)
+	// This avoids async calls that cause button-flicker.
+	if (d.sales_invoice) {
+		const total_paid = parseFloat(d.total_paid) || 0;
+		const order_total = parseFloat(d.total_order_value) || 0;
+		// Show if not fully paid (allow some float rounding tolerance)
+		if (total_paid + 0.01 < order_total || order_total === 0) {
+			frm.add_custom_button(__('Payment Entry'),
+				() => _show_payment_entry_dialog(frm), __('Create'));
+		}
+	}
+
+	// 4. Create Production Plan — show when SI exists AND no plan yet
+	if (d.sales_invoice && !d.production_plan) {
+		frm.add_custom_button(__('Production Plan'),
+			() => _action(frm, 'create_production_plan'), __('Create'));
+	}
+
+	// 5. Create Material Request — show when no MR yet
+	if (!d.material_request) {
+		frm.add_custom_button(__('Material Request'),
+			() => _action(frm, 'create_material_request'), __('Create'));
+	}
+
+	// 6. Create Cost Sheet — show until exists
+	if (!d.cost_sheet) {
+		frm.add_custom_button(__('Cost Sheet'),
+			() => _action(frm, 'create_cost_sheet'), __('Create'));
+	}
+
+	// 7. Create Delivery Plan — show when SI exists AND no DP yet
+	if (d.sales_invoice && !d.delivery_plan) {
+		frm.add_custom_button(__('Delivery Plan'),
+			() => _action(frm, 'create_delivery_plan'), __('Create'));
+	}
+
+	// 8. Create Closing Sheet — show when SI exists AND no closing yet
+	if (d.sales_invoice && !d.closing_sheet) {
+		frm.add_custom_button(__('Closing Sheet'),
+			() => _action(frm, 'create_closing_sheet'), __('Create'));
+	}
+
+	// Record buttons (always available)
+	frm.add_custom_button(__('Wastage'),
+		() => _record_doc(frm, 'Catering Wastage Entry'), __('Record'));
+	frm.add_custom_button(__('Return'),
+		() => _record_doc(frm, 'Catering Return Entry'), __('Record'));
+	frm.add_custom_button(__('Emergency Expense'),
+		() => _record_doc(frm, 'Catering Emergency Expense'), __('Record'));
+
+	// View buttons
+	frm.add_custom_button(__('Profitability'),
+		() => _show_profitability_dialog(frm), __('View'));
+
+	// Top-level Close Order (only when closing sheet exists and ready)
+	if (d.closing_sheet && d.status !== 'Closed') {
+		frm.add_custom_button(__('🔒 Close Order'), () => {
+			frappe.confirm(__('Close this Catering Order?'),
+				() => _action(frm, 'close_catering_order'));
+		}).addClass('btn-danger');
+	}
+}
+
+
+// ════════════════════════════════════════════════════════════════════════════
+// DIALOGS
+// ════════════════════════════════════════════════════════════════════════════
+
+function _show_sales_order_dialog(frm) {
+	const dialog = new frappe.ui.Dialog({
+		title: __('Create Sales Order'),
+		fields: [
+			{ fieldname: 'info', fieldtype: 'HTML',
+			  options: `<p>This will create a Sales Order for <b>${frm.doc.customer_name || frm.doc.customer}</b><br>
+			  Total: <b>${format_currency(frm.doc.total_order_value, frm.doc.currency)}</b></p>` },
+			{ fieldname: 'auto_submit', fieldtype: 'Check', label: 'Auto-submit Sales Order', default: 1 },
+		],
+		primary_action_label: __('Create'),
+		primary_action: (values) => {
+			dialog.hide();
+			frappe.call({
+				method: 'dagaar_catering.catering_management.controllers.catering_order.create_sales_order',
+				args: {
+					catering_order: frm.doc.name,
+					auto_submit: values.auto_submit ? 1 : 0,
+				},
+				freeze: true, freeze_message: __('Creating Sales Order...'),
+				callback: (r) => {
+					if (r.message) {
+						_open_print_or_redirect(frm, 'Sales Order', r.message, values.auto_submit);
+					}
+				}
+			});
+		}
+	});
+	dialog.show();
+}
+
+function _show_sales_invoice_dialog(frm) {
+	frappe.call({
+		method: 'dagaar_catering.catering_management.controllers.catering_order.get_sales_invoice_defaults',
+		args: { catering_order: frm.doc.name },
+		callback: (r) => {
+			if (!r.message) return;
+			if (r.message.error) {
+				frappe.msgprint({ title: __('Cannot Create'), message: r.message.error, indicator: 'red' });
+				return;
+			}
+			const d = r.message;
+			const dialog = new frappe.ui.Dialog({
+				title: __('Create Sales Invoice'),
+				fields: [
+					{ fieldname: 'customer_info', fieldtype: 'HTML',
+					  options: `<p>Customer: <b>${d.customer_name || d.customer}</b><br>
+					  Order Total: <b>${format_currency(d.grand_total, d.currency)}</b></p>` },
+					{ fieldname: 'additional_discount', fieldtype: 'Currency',
+					  label: 'Additional Discount Amount',
+					  description: 'Optional flat discount on grand total',
+					  default: 0 },
+					{ fieldname: 'auto_submit', fieldtype: 'Check',
+					  label: 'Auto-submit Invoice', default: 1 },
+				],
+				primary_action_label: __('Create Invoice'),
+				primary_action: (values) => {
+					dialog.hide();
+					frappe.call({
+						method: 'dagaar_catering.catering_management.controllers.catering_order.create_sales_invoice',
+						args: {
+							catering_order: frm.doc.name,
+							additional_discount: values.additional_discount || 0,
+							auto_submit: values.auto_submit ? 1 : 0,
+						},
+						freeze: true, freeze_message: __('Creating Sales Invoice...'),
+						callback: (r) => {
+							if (r.message) {
+								_open_print_or_redirect(frm, 'Sales Invoice', r.message, values.auto_submit);
+							}
+						}
+					});
+				}
+			});
+			dialog.show();
+		}
+	});
+}
+
+function _show_payment_entry_dialog(frm) {
+	frappe.call({
+		method: 'dagaar_catering.catering_management.controllers.catering_order.get_payment_defaults',
+		args: { catering_order: frm.doc.name },
+		callback: (r) => {
+			if (!r.message) return;
+			if (r.message.error) {
+				frappe.msgprint({ title: __('Cannot Create'), message: r.message.error, indicator: 'red' });
+				return;
+			}
+			const d = r.message;
+			const dialog = new frappe.ui.Dialog({
+				title: __('Record Payment'),
+				fields: [
+					{ fieldname: 'invoice_info', fieldtype: 'HTML',
+					  options: `
+						<table class="table table-bordered" style="margin:0;">
+						<tr><td><b>Sales Invoice</b></td><td>${d.sales_invoice}</td></tr>
+						<tr><td><b>Invoice Total</b></td><td>${format_currency(d.invoice_grand_total, d.currency)}</td></tr>
+						<tr><td><b>Outstanding</b></td><td style="color:#e74c3c;"><b>${format_currency(d.invoice_outstanding, d.currency)}</b></td></tr>
+						</table>` },
+					{ fieldname: 'paid_amount', fieldtype: 'Currency',
+					  label: 'Payment Amount', default: d.suggested_amount, reqd: 1 },
+					{ fieldname: 'col1', fieldtype: 'Column Break' },
+					{ fieldname: 'mode_of_payment', fieldtype: 'Link', options: 'Mode of Payment',
+					  label: 'Mode of Payment', default: d.mode_of_payment, reqd: 1 },
+					{ fieldname: 'sb1', fieldtype: 'Section Break' },
+					{ fieldname: 'paid_to', fieldtype: 'Link', options: 'Account',
+					  label: 'Paid To Account', default: d.paid_to, reqd: 1 },
+					{ fieldname: 'col2', fieldtype: 'Column Break' },
+					{ fieldname: 'reference_no', fieldtype: 'Data',
+					  label: 'Reference No', default: d.reference_no_default },
+					{ fieldname: 'reference_date', fieldtype: 'Date',
+					  label: 'Reference Date', default: d.reference_date_default },
+					{ fieldname: 'sb2', fieldtype: 'Section Break' },
+					{ fieldname: 'auto_submit', fieldtype: 'Check',
+					  label: 'Auto-submit Payment Entry', default: 1 },
+				],
+				primary_action_label: __('Record Payment'),
+				primary_action: (values) => {
+					if (values.paid_amount > d.invoice_outstanding) {
+						frappe.msgprint({
+							title: __('Amount Too High'),
+							message: __('Payment amount cannot exceed outstanding amount {0}',
+								[format_currency(d.invoice_outstanding, d.currency)]),
+							indicator: 'red'
+						});
+						return;
+					}
+					dialog.hide();
+					frappe.call({
+						method: 'dagaar_catering.catering_management.controllers.catering_order.create_payment_entry',
+						args: {
+							catering_order: frm.doc.name,
+							paid_amount: values.paid_amount,
+							mode_of_payment: values.mode_of_payment,
+							paid_to: values.paid_to,
+							reference_no: values.reference_no,
+							reference_date: values.reference_date,
+							auto_submit: values.auto_submit ? 1 : 0,
+						},
+						freeze: true, freeze_message: __('Recording Payment...'),
+						callback: (r) => {
+							if (r.message) {
+								_open_print_or_redirect(frm, 'Payment Entry', r.message, values.auto_submit);
+							}
+						}
+					});
+				}
+			});
+			dialog.show();
+		}
+	});
+}
+
+function _open_print_or_redirect(frm, doctype, docname, is_submitted) {
+	frappe.show_alert({
+		message: __('Created {0} {1}', [doctype, docname]),
+		indicator: 'green'
+	}, 5);
+
+	if (is_submitted) {
+		// Show print preview after submission
+		setTimeout(() => {
+			frappe.set_route('Form', doctype, docname);
+			setTimeout(() => {
+				const url = `/printview?doctype=${encodeURIComponent(doctype)}&name=${encodeURIComponent(docname)}&format=Standard&no_letterhead=0&_lang=en`;
+				window.open(url, '_blank');
+			}, 800);
+		}, 300);
+	} else {
+		frappe.set_route('Form', doctype, docname);
+	}
+
+	// Reload Catering Order to refresh linked field display
+	setTimeout(() => frm.reload_doc(), 500);
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// GENERIC ACTION (for non-popup actions)
+// ════════════════════════════════════════════════════════════════════════════
+
+function _action(frm, method) {
+	const targetMap = {
+		'create_cost_sheet':       { doctype: 'Catering Cost Sheet',       },
+		'create_production_plan':  { doctype: 'Catering Production Plan',  },
+		'create_material_request': { doctype: 'Material Request',          },
+		'create_delivery_plan':    { doctype: 'Catering Delivery Plan',    },
+		'create_closing_sheet':    { doctype: 'Catering Closing Sheet',    },
+		'close_catering_order':    { doctype: null,                        },
+	};
+	const target = targetMap[method] || {};
+
+	frappe.call({
+		method: `dagaar_catering.catering_management.controllers.catering_order.${method}`,
+		args: { catering_order: frm.doc.name },
+		freeze: true,
+		freeze_message: __('Processing...'),
+		callback: (r) => {
+			if (r.message && target.doctype) {
+				frappe.show_alert({
+					message: __('Created {0} {1}', [target.doctype, r.message]),
+					indicator: 'green'
+				}, 5);
+				frappe.set_route('Form', target.doctype, r.message);
+			} else if (r.message) {
+				frm.reload_doc();
+			}
+		},
+	});
+}
+
+function _record_doc(frm, doctype) {
+	frappe.new_doc(doctype, {
+		catering_order: frm.doc.name,
+		company: frm.doc.company,
+		currency: frm.doc.currency
+	});
+}
 
 // ════════════════════════════════════════════════════════════════════════════
 // WORKFLOW PROGRESS DASHBOARD
@@ -79,16 +373,13 @@ frappe.ui.form.on('Catering Order Item', {
 
 function _render_workflow_progress(frm) {
 	if (frm.is_new()) return;
-
 	const stages = [
 		{ key: 'Draft',            label: 'Draft',     icon: '📝', done: true },
-		{ key: 'Quoted',           label: 'Quoted',    icon: '📄', done: !!frm.doc.quotation },
-		{ key: 'Confirmed',        label: 'SO',        icon: '✅', done: !!frm.doc.sales_order },
-		{ key: 'Deposit Received', label: 'Deposit',   icon: '💵', done: (frm.doc.deposit_received || 0) >= (frm.doc.deposit_amount || 0) && (frm.doc.deposit_amount || 0) > 0 },
-		{ key: 'In Production',    label: 'Production',icon: '🍳', done: !!frm.doc.production_plan },
-		{ key: 'Delivered',        label: 'Delivered', icon: '🚚', done: !!frm.doc.delivery_note || (frm.doc.delivery_plan && _check_dp_delivered(frm)) },
+		{ key: 'Confirmed',        label: 'Sales Order',   icon: '✅', done: !!frm.doc.sales_order },
 		{ key: 'Invoiced',         label: 'Invoice',   icon: '🧾', done: !!frm.doc.sales_invoice },
-		{ key: 'Paid',             label: 'Paid',      icon: '💰', done: frm.doc.status === 'Paid' || (frm.doc.balance_due === 0 && frm.doc.total_order_value > 0) },
+		{ key: 'Paid',             label: 'Paid',      icon: '💰', done: frm.doc.status === 'Paid' },
+		{ key: 'In Production',    label: 'Production',icon: '🍳', done: !!frm.doc.production_plan },
+		{ key: 'Delivered',        label: 'Delivered', icon: '🚚', done: !!frm.doc.delivery_plan },
 		{ key: 'Closed',           label: 'Closed',    icon: '🔒', done: frm.doc.status === 'Closed' },
 	];
 
@@ -116,20 +407,14 @@ function _render_workflow_progress(frm) {
 	frm.fields_dict.workflow_dashboard?.$wrapper.html(html);
 }
 
-function _check_dp_delivered(frm) {
-	// Stale check from refresh — best-effort
-	return false;
-}
-
 // ════════════════════════════════════════════════════════════════════════════
-// LIVE PROFITABILITY CARD
+// PROFITABILITY CARD + DIALOG
 // ════════════════════════════════════════════════════════════════════════════
 
 function _render_profitability_card(frm) {
 	if (frm.is_new() || !frm.doc.name) return;
-
 	frappe.call({
-		method: 'dagaar_catering.dagaar_catering.controllers.catering_order.get_profitability',
+		method: 'dagaar_catering.catering_management.controllers.catering_order.get_profitability',
 		args: { catering_order: frm.doc.name },
 		callback: (r) => {
 			if (!r.message) return;
@@ -167,129 +452,32 @@ function _profit_card(label, value, cur, color, icon) {
 		</div>`;
 }
 
-// ════════════════════════════════════════════════════════════════════════════
-// ACTION BUTTONS — workflow-driven
-// ════════════════════════════════════════════════════════════════════════════
-
-function _setup_action_buttons(frm) {
-	if (frm.is_new()) return;
-	if (frm.doc.docstatus === 2) return;
-	if (frm.doc.status === 'Closed') return;
-
-	const d = frm.doc;
-	const can_create = (cond) => frm.doc.docstatus !== 2 && cond;
-
-	// Group: Create
-	if (!d.quotation && d.items && d.items.length > 0) {
-		frm.add_custom_button(__('Quotation'), () => _action(frm, 'create_quotation'), __('Create'));
-	}
-	if (d.quotation && !d.sales_order) {
-		frm.add_custom_button(__('Sales Order'), () => _action(frm, 'create_sales_order'), __('Create'));
-	}
-	if (d.sales_order && (d.deposit_received || 0) < (d.deposit_amount || 0)) {
-		frm.add_custom_button(__('Deposit Payment'), () => _action(frm, 'create_deposit_payment'), __('Create'));
-	}
-	if (!d.cost_sheet) {
-		frm.add_custom_button(__('Cost Sheet'), () => _action(frm, 'create_cost_sheet'), __('Create'));
-	}
-	if (!d.production_plan) {
-		frm.add_custom_button(__('Production Plan'), () => _action(frm, 'create_production_plan'), __('Create'));
-	}
-	if (!d.material_request) {
-		frm.add_custom_button(__('Material Request'), () => _action(frm, 'create_material_request'), __('Create'));
-	}
-	if (!d.delivery_plan) {
-		frm.add_custom_button(__('Delivery Plan'), () => _action(frm, 'create_delivery_plan'), __('Create'));
-	}
-	if (d.production_plan && !d.sales_invoice) {
-		frm.add_custom_button(__('Sales Invoice'), () => _action(frm, 'create_sales_invoice'), __('Create'));
-	}
-	if (d.sales_invoice && !d.closing_sheet) {
-		frm.add_custom_button(__('Closing Sheet'), () => _action(frm, 'create_closing_sheet'), __('Create'));
-	}
-
-	// Group: Record
-	frm.add_custom_button(__('Wastage'), () => _record_doc(frm, 'Catering Wastage Entry'), __('Record'));
-	frm.add_custom_button(__('Return'), () => _record_doc(frm, 'Catering Return Entry'), __('Record'));
-	frm.add_custom_button(__('Emergency Expense'), () => _record_doc(frm, 'Catering Emergency Expense'), __('Record'));
-
-	// Group: View
-	frm.add_custom_button(__('Profitability'), () => _show_profitability_dialog(frm), __('View'));
-
-	// Top-level: Close Order
-	if (d.closing_sheet && d.status !== 'Closed') {
-		frm.add_custom_button(__('🔒 Close Order'), () => {
-			frappe.confirm(
-				__('Close this Catering Order? This action requires the Closing Sheet to be approved.'),
-				() => _action(frm, 'close_catering_order')
-			);
-		}).addClass('btn-danger');
-	}
-}
-
-function _action(frm, method) {
-	frappe.call({
-		method: `dagaar_catering.dagaar_catering.controllers.catering_order.${method}`,
-		args: { catering_order: frm.doc.name },
-		freeze: true,
-		freeze_message: __('Processing...'),
-		callback: (r) => {
-			if (r.message) {
-				frm.reload_doc();
-			}
-		}
-	});
-}
-
-function _record_doc(frm, doctype) {
-	frappe.new_doc(doctype, {
-		catering_order: frm.doc.name,
-		company: frm.doc.company,
-		currency: frm.doc.currency
-	});
-}
-
-// ════════════════════════════════════════════════════════════════════════════
-// PROFITABILITY DIALOG
-// ════════════════════════════════════════════════════════════════════════════
-
 function _show_profitability_dialog(frm) {
 	frappe.call({
-		method: 'dagaar_catering.dagaar_catering.controllers.catering_order.get_profitability',
+		method: 'dagaar_catering.catering_management.controllers.catering_order.get_profitability',
 		args: { catering_order: frm.doc.name },
 		callback: (r) => {
 			if (!r.message) return;
 			const d = r.message;
 			const cur = d.currency;
-
 			const dialog = new frappe.ui.Dialog({
-				title: __('Profitability Snapshot — {0}', [frm.doc.name]),
+				title: __('Profitability — {0}', [frm.doc.name]),
 				size: 'large',
-				fields: [{
-					fieldtype: 'HTML',
-					fieldname: 'pl_html',
-					options: `
-						<table class="table table-bordered" style="margin:0;">
-							<tbody>
-								<tr style="background:#eaf2f8;font-weight:bold;"><td colspan="2">REVENUE</td></tr>
-								<tr><td>Total Order Value</td><td style="text-align:right;">${format_currency(d.revenue, cur)}</td></tr>
-								<tr><td>Invoiced</td><td style="text-align:right;">${format_currency(d.invoiced, cur)}</td></tr>
-								<tr><td>Paid</td><td style="text-align:right;color:#27ae60;">${format_currency(d.paid, cur)}</td></tr>
-								<tr><td>Outstanding</td><td style="text-align:right;color:#e74c3c;">${format_currency(d.outstanding, cur)}</td></tr>
-
-								<tr style="background:#fef9e7;font-weight:bold;"><td colspan="2">COSTS</td></tr>
-								<tr><td>Cost Sheet Total</td><td style="text-align:right;">${format_currency(d.cost, cur)}</td></tr>
-								<tr><td>Wastage</td><td style="text-align:right;">${format_currency(d.wastage, cur)}</td></tr>
-								<tr><td>Emergency Expenses</td><td style="text-align:right;">${format_currency(d.emergency, cur)}</td></tr>
-								<tr style="font-weight:bold;background:#fadbd8;"><td>Total Cost</td><td style="text-align:right;">${format_currency(d.total_cost, cur)}</td></tr>
-
-								<tr style="background:#eafaf1;font-weight:bold;"><td colspan="2">PROFIT & LOSS</td></tr>
-								<tr style="font-weight:bold;font-size:16px;"><td>Gross Profit</td><td style="text-align:right;color:${d.gross_profit > 0 ? '#27ae60' : '#e74c3c'};">${format_currency(d.gross_profit, cur)}</td></tr>
-								<tr style="font-weight:bold;font-size:16px;"><td>Gross Margin %</td><td style="text-align:right;color:${d.gross_margin_percent >= 20 ? '#27ae60' : d.gross_margin_percent >= 10 ? '#f39c12' : '#e74c3c'};">${d.gross_margin_percent}%</td></tr>
-							</tbody>
-						</table>
-					`
-				}]
+				fields: [{ fieldtype: 'HTML', fieldname: 'pl', options: `
+					<table class="table table-bordered" style="margin:0;">
+						<tr style="background:#eaf2f8;font-weight:bold;"><td colspan="2">REVENUE</td></tr>
+						<tr><td>Total Order Value</td><td style="text-align:right;">${format_currency(d.revenue, cur)}</td></tr>
+						<tr><td>Invoiced</td><td style="text-align:right;">${format_currency(d.invoiced, cur)}</td></tr>
+						<tr><td>Paid</td><td style="text-align:right;color:#27ae60;">${format_currency(d.paid, cur)}</td></tr>
+						<tr><td>Outstanding</td><td style="text-align:right;color:#e74c3c;">${format_currency(d.outstanding, cur)}</td></tr>
+						<tr style="background:#fef9e7;font-weight:bold;"><td colspan="2">COSTS</td></tr>
+						<tr><td>Cost Sheet</td><td style="text-align:right;">${format_currency(d.cost, cur)}</td></tr>
+						<tr><td>Wastage</td><td style="text-align:right;">${format_currency(d.wastage, cur)}</td></tr>
+						<tr><td>Emergency</td><td style="text-align:right;">${format_currency(d.emergency, cur)}</td></tr>
+						<tr style="font-weight:bold;background:#fadbd8;"><td>Total Cost</td><td style="text-align:right;">${format_currency(d.total_cost, cur)}</td></tr>
+						<tr style="background:#eafaf1;font-weight:bold;font-size:16px;"><td>Gross Profit</td><td style="text-align:right;color:${d.gross_profit > 0 ? '#27ae60' : '#e74c3c'};">${format_currency(d.gross_profit, cur)}</td></tr>
+						<tr style="background:#eafaf1;font-weight:bold;font-size:16px;"><td>Gross Margin %</td><td style="text-align:right;">${d.gross_margin_percent}%</td></tr>
+					</table>` }]
 			});
 			dialog.show();
 		}
@@ -297,7 +485,7 @@ function _show_profitability_dialog(frm) {
 }
 
 // ════════════════════════════════════════════════════════════════════════════
-// MENU PACKAGE LOAD
+// MENU PACKAGE LOAD + CALCULATIONS
 // ════════════════════════════════════════════════════════════════════════════
 
 function _load_package_items(frm, pkg) {
@@ -322,12 +510,8 @@ function _load_package_items(frm, pkg) {
 	});
 	frm.refresh_field('items');
 	_recalc_totals(frm);
-	frappe.show_alert({ message: __('Loaded {0} items from package', [(pkg.items || []).length]), indicator: 'green' });
+	frappe.show_alert({ message: __('Loaded {0} items', [(pkg.items || []).length]), indicator: 'green' });
 }
-
-// ════════════════════════════════════════════════════════════════════════════
-// CALCULATIONS
-// ════════════════════════════════════════════════════════════════════════════
 
 function _recalc_item(frm, cdt, cdn) {
 	const item = locals[cdt][cdn];
@@ -348,15 +532,9 @@ function _recalc_totals(frm) {
 	frm.doc.total_order_value = subtotal - frm.doc.discount_amount + (frm.doc.total_taxes || 0);
 	frm.doc.deposit_amount = frm.doc.total_order_value * (frm.doc.deposit_percent || 0) / 100;
 	frm.doc.balance_due = frm.doc.total_order_value - (frm.doc.total_paid || 0);
-
-	['subtotal', 'discount_amount', 'total_order_value', 'deposit_amount', 'balance_due'].forEach(f => {
-		frm.refresh_field(f);
-	});
+	['subtotal', 'discount_amount', 'total_order_value', 'deposit_amount', 'balance_due']
+		.forEach(f => frm.refresh_field(f));
 }
-
-// ════════════════════════════════════════════════════════════════════════════
-// STATUS INDICATOR
-// ════════════════════════════════════════════════════════════════════════════
 
 function _setup_status_indicator(frm) {
 	const colors = {
@@ -368,32 +546,18 @@ function _setup_status_indicator(frm) {
 	};
 	const color = colors[frm.doc.status] || 'gray';
 	frm.dashboard.set_headline_alert(
-		`<div style="padding:4px 8px;"><strong>Status:</strong> <span style="color:${color === 'darkgray' ? '#555' : ''};">${frm.doc.status || 'Draft'}</span></div>`,
-		color
+		`<strong>Status:</strong> ${frm.doc.status || 'Draft'}`, color
 	);
 }
 
-// ════════════════════════════════════════════════════════════════════════════
-// QUICK LINKS
-// ════════════════════════════════════════════════════════════════════════════
-
-function _setup_quick_links(frm) {
-	if (frm.is_new()) return;
-
-	const links = [
-		{ field: 'quotation',       dt: 'Quotation',                label: __('Open Quotation') },
-		{ field: 'sales_order',     dt: 'Sales Order',              label: __('Open Sales Order') },
-		{ field: 'sales_invoice',   dt: 'Sales Invoice',            label: __('Open Sales Invoice') },
-		{ field: 'cost_sheet',      dt: 'Catering Cost Sheet',      label: __('Open Cost Sheet') },
-		{ field: 'production_plan', dt: 'Catering Production Plan', label: __('Open Production Plan') },
-		{ field: 'closing_sheet',   dt: 'Catering Closing Sheet',   label: __('Open Closing Sheet') },
-	];
-
-	links.forEach(l => {
-		if (frm.doc[l.field]) {
-			frm.add_custom_button(l.label, () => {
-				frappe.set_route('Form', l.dt, frm.doc[l.field]);
-			}, __('Open'));
-		}
-	});
+function _setup_bypass_visibility(frm) {
+	const manager_roles = ['Catering Manager', 'Catering Management', 'System Manager', 'Administrator'];
+	const user_roles = frappe.user_roles || [];
+	const is_manager = manager_roles.some(r => user_roles.includes(r));
+	if (frm.fields_dict.bypass_deposit) {
+		frm.toggle_display('bypass_deposit', is_manager);
+	}
+	if (frm.doc.bypass_deposit) {
+		frm.dashboard.add_indicator(__('Deposit Bypassed'), 'orange');
+	}
 }

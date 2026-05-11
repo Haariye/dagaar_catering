@@ -1,18 +1,32 @@
 # Copyright (c) 2024, DagaarSoft and contributors
 # License: MIT
 """
-Linkers — hooked into ERPNext document events.
+Linkers — keep Catering Order in sync with linked ERPNext documents.
 
-When a Sales Order, Sales Invoice, Payment Entry, Delivery Note, or Work Order
-that has a catering_order link is submitted, this module updates the parent
-Catering Order's status and totals automatically.
+Triggered via doc_events on Sales Order, Sales Invoice, Payment Entry, Delivery Note.
+Updates total_paid, status, and link fields on the parent Catering Order.
 """
 import frappe
 from frappe.utils import flt
 
 
+def update_quotation_status(doc, method=None):
+	"""Quotation submit → mark Catering Order Quoted (legacy support)."""
+	if not doc.get("catering_order"):
+		return
+	try:
+		if doc.docstatus == 1:
+			frappe.db.set_value("Catering Order", doc.catering_order,
+				{"quotation": doc.name, "status": "Quoted"}, update_modified=False)
+		elif doc.docstatus == 2:
+			frappe.db.set_value("Catering Order", doc.catering_order, "quotation", None,
+				update_modified=False)
+	except Exception:
+		pass
+
+
 def update_so_status(doc, method=None):
-	"""When Sales Order is submitted/cancelled, update parent Catering Order."""
+	"""Sales Order submit/cancel → update parent Catering Order."""
 	if not doc.get("catering_order"):
 		return
 	try:
@@ -20,7 +34,6 @@ def update_so_status(doc, method=None):
 			frappe.db.set_value("Catering Order", doc.catering_order,
 				{"sales_order": doc.name, "status": "Confirmed"}, update_modified=False)
 		elif doc.docstatus == 2:
-			# Cancelled
 			frappe.db.set_value("Catering Order", doc.catering_order, "sales_order", None,
 				update_modified=False)
 	except Exception:
@@ -28,59 +41,79 @@ def update_so_status(doc, method=None):
 
 
 def update_si_status(doc, method=None):
-	"""Sales Invoice submitted → mark order as Invoiced."""
+	"""Sales Invoice submit/cancel → update Catering Order, recompute totals."""
 	if not doc.get("catering_order"):
 		return
 	try:
 		if doc.docstatus == 1:
-			# Check outstanding
-			status = "Paid" if flt(doc.outstanding_amount) <= 0 else "Invoiced"
-			frappe.db.set_value("Catering Order", doc.catering_order,
-				{"sales_invoice": doc.name, "status": status}, update_modified=False)
+			# Recompute total_paid (might already have payments referencing this invoice)
+			total_paid = _recalculate_total_paid(doc.catering_order, sales_invoice=doc.name)
+			outstanding = flt(doc.outstanding_amount)
+			status = "Paid" if outstanding <= 0 else "Invoiced"
+			frappe.db.set_value("Catering Order", doc.catering_order, {
+				"sales_invoice": doc.name,
+				"total_paid": total_paid,
+				"deposit_received": total_paid,  # alias for backward compat
+				"balance_due": flt(doc.grand_total) - total_paid,
+				"status": status,
+			}, update_modified=False)
 		elif doc.docstatus == 2:
 			frappe.db.set_value("Catering Order", doc.catering_order, "sales_invoice", None,
 				update_modified=False)
-	except Exception:
-		pass
+	except Exception as e:
+		frappe.log_error(f"linker.update_si_status error: {str(e)[:200]}", "Catering Linker")
 
 
 def update_payment_status(doc, method=None):
-	"""Payment Entry submitted → update deposit_received and total_paid."""
-	if not doc.get("catering_order"):
-		return
-	try:
-		# Recalculate total paid from all submitted payment entries
-		total_paid = flt(frappe.db.sql("""
-			SELECT IFNULL(SUM(paid_amount), 0) FROM `tabPayment Entry`
-			WHERE docstatus = 1 AND payment_type = 'Receive' AND catering_order = %s
-		""", doc.catering_order)[0][0])
+	"""Payment Entry submit/cancel → recompute total_paid on Catering Order.
 
-		co = frappe.get_doc("Catering Order", doc.catering_order)
-		# If this is the first payment, treat as deposit
-		deposit_received = min(total_paid, flt(co.deposit_amount)) if flt(co.deposit_amount) else total_paid
+	Triggers on:
+	1. Direct payment (catering_order field set on PE)
+	2. Indirect payment (PE references the Sales Invoice linked to a Catering Order)
+	"""
+	# Find affected Catering Orders
+	catering_orders = set()
 
-		updates = {
-			"total_paid": total_paid,
-			"deposit_received": deposit_received,
-			"balance_due": flt(co.grand_total) - total_paid,
-		}
+	# Direct via catering_order field
+	if doc.get("catering_order"):
+		catering_orders.add(doc.catering_order)
 
-		# If deposit fully received and not yet in production, update status
-		if flt(deposit_received) >= flt(co.deposit_amount) and flt(co.deposit_amount) > 0:
-			if co.status in ("Confirmed", "Quoted", "Draft"):
-				updates["status"] = "Deposit Received"
+	# Indirect via Sales Invoice references
+	for ref in (doc.get("references") or []):
+		if ref.reference_doctype == "Sales Invoice":
+			co = frappe.db.get_value("Catering Order",
+				{"sales_invoice": ref.reference_name}, "name")
+			if co:
+				catering_orders.add(co)
 
-		# If sales invoice exists and now fully paid
-		if co.sales_invoice and total_paid >= flt(co.grand_total):
-			updates["status"] = "Paid"
+	# Update each affected Catering Order
+	for co_name in catering_orders:
+		try:
+			total_paid = _recalculate_total_paid(co_name)
+			co_data = frappe.db.get_value("Catering Order", co_name,
+				["total_order_value", "sales_invoice"], as_dict=True) or {}
 
-		frappe.db.set_value("Catering Order", doc.catering_order, updates, update_modified=False)
-	except Exception:
-		pass
+			update_data = {
+				"total_paid": total_paid,
+				"deposit_received": total_paid,
+				"balance_due": flt(co_data.get("total_order_value", 0)) - total_paid,
+			}
+
+			# Update status if invoice is fully paid
+			if co_data.get("sales_invoice"):
+				outstanding = flt(frappe.db.get_value("Sales Invoice",
+					co_data["sales_invoice"], "outstanding_amount"))
+				if outstanding <= 0:
+					update_data["status"] = "Paid"
+
+			frappe.db.set_value("Catering Order", co_name, update_data, update_modified=False)
+		except Exception as e:
+			frappe.log_error(f"linker.update_payment_status error for {co_name}: {str(e)[:200]}",
+				"Catering Linker")
 
 
 def update_dn_status(doc, method=None):
-	"""Delivery Note submitted → update order status to Delivered."""
+	"""Delivery Note submit → update Catering Order to Delivered."""
 	if not doc.get("catering_order"):
 		return
 	try:
@@ -92,11 +125,50 @@ def update_dn_status(doc, method=None):
 
 
 def update_wo_status(doc, method=None):
-	"""Work Order events → log activity on parent Catering Order."""
-	if not doc.get("catering_order"):
-		return
+	"""Work Order events → log only (status driven by Production Plan)."""
+	pass
+
+
+# ─── Internal helpers ────────────────────────────────────────────────────────
+
+def _recalculate_total_paid(catering_order, sales_invoice=None):
+	"""Compute total received from all submitted Payment Entries for a Catering Order."""
+	total = 0.0
+
+	# Direct payments via catering_order field
 	try:
-		# Just log, don't change status
-		pass
+		col_check = frappe.db.sql("""
+			SELECT COUNT(*) FROM information_schema.columns
+			WHERE table_schema = DATABASE() AND table_name = 'tabPayment Entry'
+			  AND column_name = 'catering_order'
+		""")
+		if col_check and col_check[0][0] > 0:
+			direct = frappe.db.sql("""
+				SELECT IFNULL(SUM(paid_amount), 0) FROM `tabPayment Entry`
+				WHERE docstatus = 1 AND payment_type = 'Receive' AND catering_order = %s
+			""", catering_order)
+			total += flt(direct[0][0]) if direct else 0
 	except Exception:
 		pass
+
+	# Indirect via Sales Invoice references (avoid double-counting)
+	if not sales_invoice:
+		sales_invoice = frappe.db.get_value("Catering Order", catering_order, "sales_invoice")
+
+	if sales_invoice:
+		try:
+			via_invoice = frappe.db.sql("""
+				SELECT IFNULL(SUM(per.allocated_amount), 0)
+				FROM `tabPayment Entry` pe
+				INNER JOIN `tabPayment Entry Reference` per ON per.parent = pe.name
+				WHERE pe.docstatus = 1
+				  AND pe.payment_type = 'Receive'
+				  AND per.reference_doctype = 'Sales Invoice'
+				  AND per.reference_name = %s
+				  AND (pe.catering_order IS NULL OR pe.catering_order != %s)
+			""", (sales_invoice, catering_order))
+			total += flt(via_invoice[0][0]) if via_invoice else 0
+		except Exception:
+			pass
+
+	return total

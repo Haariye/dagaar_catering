@@ -1,0 +1,324 @@
+{
+ "actions": [],
+ "autoname": "naming_series:",
+ "creation": "2024-01-01 00:00:00",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "naming_series",
+  "catering_order",
+  "customer",
+  "cb_1",
+  "closing_date",
+  "company",
+  "status",
+  "revenue_sb",
+  "total_revenue",
+  "invoiced_amount",
+  "payment_received",
+  "outstanding",
+  "costs_sb",
+  "food_cost",
+  "beverage_cost",
+  "labor_cost",
+  "delivery_cost",
+  "cb_2",
+  "total_wastage",
+  "total_emergency_expense",
+  "total_cost",
+  "profit_and_loss_sb",
+  "gross_profit",
+  "net_profit",
+  "gross_margin_percent",
+  "cb_3",
+  "planned_margin_percent",
+  "margin_variance",
+  "notes_sb",
+  "notes",
+  "reviewed_by",
+  "amended_from"
+ ],
+ "fields": [
+  {
+   "fieldname": "naming_series",
+   "fieldtype": "Select",
+   "label": "Series",
+   "options": "CCS-.YYYY.-.####",
+   "reqd": 1
+  },
+  {
+   "bold": 1,
+   "fieldname": "catering_order",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "label": "Catering Order",
+   "options": "Catering Order",
+   "reqd": 1
+  },
+  {
+   "fieldname": "customer",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Customer",
+   "read_only": 1
+  },
+  {
+   "fieldname": "cb_1",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "closing_date",
+   "fieldtype": "Date",
+   "in_list_view": 1,
+   "label": "Closing Date",
+   "reqd": 1
+  },
+  {
+   "fieldname": "company",
+   "fieldtype": "Link",
+   "label": "Company",
+   "options": "Company"
+  },
+  {
+   "default": "Draft",
+   "fieldname": "status",
+   "fieldtype": "Select",
+   "in_filter": 1,
+   "in_list_view": 1,
+   "label": "Status",
+   "options": "\nDraft\nReviewed\nApproved\nClosed"
+  },
+  {
+   "fieldname": "revenue_sb",
+   "fieldtype": "Section Break",
+   "label": "Revenue"
+  },
+  {
+   "bold": 1,
+   "fieldname": "total_revenue",
+   "fieldtype": "Currency",
+   "in_list_view": 1,
+   "label": "Total Revenue",
+   "read_only": 1
+  },
+  {
+   "fieldname": "invoiced_amount",
+   "fieldtype": "Currency",
+   "label": "Amount Invoiced",
+   "read_only": 1
+  },
+  {
+   "fieldname": "payment_received",
+   "fieldtype": "Currency",
+   "label": "Payment Received",
+   "read_only": 1
+  },
+  {
+   "fieldname": "outstanding",
+   "fieldtype": "Currency",
+   "label": "Outstanding",
+   "read_only": 1
+  },
+  {
+   "fieldname": "costs_sb",
+   "fieldtype": "Section Break",
+   "label": "Costs"
+  },
+  {
+   "fieldname": "food_cost",
+   "fieldtype": "Currency",
+   "label": "Food Cost",
+   "read_only": 1
+  },
+  {
+   "fieldname": "beverage_cost",
+   "fieldtype": "Currency",
+   "label": "Beverage Cost",
+   "read_only": 1
+  },
+  {
+   "fieldname": "labor_cost",
+   "fieldtype": "Currency",
+   "label": "Labor Cost",
+   "read_only": 1
+  },
+  {
+   "fieldname": "delivery_cost",
+   "fieldtype": "Currency",
+   "label": "Delivery Cost",
+   "read_only": 1
+  },
+  {
+   "fieldname": "cb_2",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "total_wastage",
+   "fieldtype": "Currency",
+   "label": "Wastage Cost",
+   "read_only": 1
+  },
+  {
+   "fieldname": "total_emergency_expense",
+   "fieldtype": "Currency",
+   "label": "Emergency Expenses",
+   "read_only": 1
+  },
+  {
+   "bold": 1,
+   "fieldname": "total_cost",
+   "fieldtype": "Currency",
+   "in_list_view": 1,
+   "label": "Total Cost",
+   "read_only": 1
+  },
+  {
+   "fieldname": "profit_and_loss_sb",
+   "fieldtype": "Section Break",
+   "label": "Profit & Loss"
+  },
+  {
+   "bold": 1,
+   "fieldname": "gross_profit",
+   "fieldtype": "Currency",
+   "label": "Gross Profit",
+   "read_only": 1
+  },
+  {
+   "bold": 1,
+   "fieldname": "net_profit",
+   "fieldtype": "Currency",
+   "in_list_view": 1,
+   "label": "Net Profit",
+   "read_only": 1
+  },
+  {
+   "bold": 1,
+   "fieldname": "gross_margin_percent",
+   "fieldtype": "Percent",
+   "in_list_view": 1,
+   "label": "Gross Margin %",
+   "read_only": 1
+  },
+  {
+   "fieldname": "cb_3",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "planned_margin_percent",
+   "fieldtype": "Percent",
+   "label": "Planned Margin %",
+   "read_only": 1
+  },
+  {
+   "fieldname": "margin_variance",
+   "fieldtype": "Percent",
+   "label": "Margin Variance",
+   "read_only": 1
+  },
+  {
+   "collapsible": 1,
+   "fieldname": "notes_sb",
+   "fieldtype": "Section Break",
+   "label": "Notes"
+  },
+  {
+   "fieldname": "notes",
+   "fieldtype": "Text",
+   "label": "Closing Notes"
+  },
+  {
+   "fieldname": "reviewed_by",
+   "fieldtype": "Link",
+   "label": "Reviewed By",
+   "options": "User"
+  },
+  {
+   "fieldname": "amended_from",
+   "fieldtype": "Link",
+   "label": "Amended From",
+   "no_copy": 1,
+   "options": "Catering Closing Sheet",
+   "print_hide": 1,
+   "read_only": 1,
+   "search_index": 1
+  }
+ ],
+ "is_submittable": 1,
+ "links": [],
+ "modified": "2026-05-06 16:39:41.707624",
+ "modified_by": "Administrator",
+ "module": "Catering Management",
+ "name": "Catering Closing Sheet",
+ "naming_rule": "By \"Naming Series\" field",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "amend": 1,
+   "cancel": 1,
+   "create": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Catering Manager",
+   "share": 1,
+   "submit": 1,
+   "write": 1
+  },
+  {
+   "amend": 1,
+   "cancel": 1,
+   "create": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Catering Finance Manager",
+   "share": 1,
+   "submit": 1,
+   "write": 1
+  },
+  {
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Catering Finance User",
+   "share": 1
+  },
+  {
+   "amend": 1,
+   "cancel": 1,
+   "create": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Catering Management",
+   "share": 1,
+   "submit": 1,
+   "write": 1
+  },
+  {
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Catering Auditor",
+   "share": 1
+  }
+ ],
+ "row_format": "Dynamic",
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "title_field": "catering_order",
+ "track_changes": 1
+}

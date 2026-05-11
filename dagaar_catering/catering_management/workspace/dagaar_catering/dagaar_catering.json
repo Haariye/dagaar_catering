@@ -1,0 +1,340 @@
+{
+ "charts": [],
+ "content": "[{\"type\": \"header\", \"data\": {\"text\": \"<span class=\\\"h4\\\"><b>Sales &amp; Orders</b></span>\", \"col\": 12}}, {\"type\": \"card\", \"data\": {\"card_name\": \"Sales & Orders\", \"col\": 4}}, {\"type\": \"card\", \"data\": {\"card_name\": \"Menu Management\", \"col\": 4}}, {\"type\": \"card\", \"data\": {\"card_name\": \"Kitchen & Production\", \"col\": 4}}, {\"type\": \"header\", \"data\": {\"text\": \"<span class=\\\"h4\\\"><b>Finance &amp; Reports</b></span>\", \"col\": 12}}, {\"type\": \"card\", \"data\": {\"card_name\": \"Finance\", \"col\": 4}}, {\"type\": \"card\", \"data\": {\"card_name\": \"Reports\", \"col\": 8}}, {\"type\": \"header\", \"data\": {\"text\": \"<span class=\\\"h4\\\"><b>Settings</b></span>\", \"col\": 12}}, {\"type\": \"card\", \"data\": {\"card_name\": \"Settings\", \"col\": 4}}]",
+ "creation": "2026-05-05 21:34:13.458397",
+ "custom_blocks": [],
+ "docstatus": 0,
+ "doctype": "Workspace",
+ "for_user": "",
+ "hide_custom": 0,
+ "icon": "agriculture",
+ "idx": 0,
+ "indicator_color": "",
+ "is_hidden": 0,
+ "label": "Dagaar Catering",
+ "links": [
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Sales & Orders",
+   "link_count": 0,
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Card Break"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Catering Order",
+   "link_count": 0,
+   "link_to": "Catering Order",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Catering Cost Sheet",
+   "link_count": 0,
+   "link_to": "Catering Cost Sheet",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Catering Closing Sheet",
+   "link_count": 0,
+   "link_to": "Catering Closing Sheet",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Catering Delivery Plan",
+   "link_count": 0,
+   "link_to": "Catering Delivery Plan",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Menu Management",
+   "link_count": 0,
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Card Break"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Catering Menu Package",
+   "link_count": 0,
+   "link_to": "Catering Menu Package",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Catering Recipe",
+   "link_count": 0,
+   "link_to": "Catering Recipe",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Kitchen & Production",
+   "link_count": 0,
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Card Break"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Catering Production Plan",
+   "link_count": 0,
+   "link_to": "Catering Production Plan",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Catering Wastage Entry",
+   "link_count": 0,
+   "link_to": "Catering Wastage Entry",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Catering Return Entry",
+   "link_count": 0,
+   "link_to": "Catering Return Entry",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Finance",
+   "link_count": 0,
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Card Break"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Catering Emergency Expense",
+   "link_count": 0,
+   "link_to": "Catering Emergency Expense",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Catering Activity Log",
+   "link_count": 0,
+   "link_to": "Catering Activity Log",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Reports",
+   "link_count": 0,
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Card Break"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 1,
+   "label": "Catering PL by Order",
+   "link_count": 0,
+   "link_to": "Catering PL by Order",
+   "link_type": "Report",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 1,
+   "label": "Gross Margin Analysis",
+   "link_count": 0,
+   "link_to": "Gross Margin Analysis",
+   "link_type": "Report",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 1,
+   "label": "Wastage Return Report",
+   "link_count": 0,
+   "link_to": "Wastage Return Report",
+   "link_type": "Report",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 1,
+   "label": "Catering Receivable Report",
+   "link_count": 0,
+   "link_to": "Catering Receivable Report",
+   "link_type": "Report",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 1,
+   "label": "Supplier Payable Report",
+   "link_count": 0,
+   "link_to": "Supplier Payable Report",
+   "link_type": "Report",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 1,
+   "label": "Cost Center Performance",
+   "link_count": 0,
+   "link_to": "Cost Center Performance",
+   "link_type": "Report",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 1,
+   "label": "Cash Flow Impact Report",
+   "link_count": 0,
+   "link_to": "Cash Flow Impact Report",
+   "link_type": "Report",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 1,
+   "label": "Balance Sheet Impact",
+   "link_count": 0,
+   "link_to": "Balance Sheet Impact",
+   "link_type": "Report",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 1,
+   "label": "Food BOM Cost Variance",
+   "link_count": 0,
+   "link_to": "Food BOM Cost Variance",
+   "link_type": "Report",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 1,
+   "label": "Management KPI Report",
+   "link_count": 0,
+   "link_to": "Management KPI Report",
+   "link_type": "Report",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Settings",
+   "link_count": 0,
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Card Break"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Catering Settings",
+   "link_count": 0,
+   "link_to": "Catering Settings",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
+  }
+ ],
+ "modified": "2026-05-10 14:16:23.105060",
+ "modified_by": "Administrator",
+ "module": "Catering Management",
+ "name": "Dagaar Catering",
+ "number_cards": [],
+ "owner": "Administrator",
+ "parent_page": "",
+ "public": 1,
+ "quick_lists": [],
+ "roles": [],
+ "sequence_id": 17.0,
+ "shortcuts": [
+  {
+   "color": "#e74c3c",
+   "doc_view": "",
+   "label": "Catering Order",
+   "link_to": "Catering Order",
+   "type": "DocType"
+  },
+  {
+   "color": "#2ecc71",
+   "doc_view": "",
+   "label": "Cost Sheet",
+   "link_to": "Catering Cost Sheet",
+   "type": "DocType"
+  },
+  {
+   "color": "#3498db",
+   "doc_view": "",
+   "label": "Closing Sheet",
+   "link_to": "Catering Closing Sheet",
+   "type": "DocType"
+  },
+  {
+   "color": "#f39c12",
+   "doc_view": "",
+   "label": "Production Plan",
+   "link_to": "Catering Production Plan",
+   "type": "DocType"
+  },
+  {
+   "color": "#7f8c8d",
+   "doc_view": "",
+   "label": "Settings",
+   "link_to": "Catering Settings",
+   "type": "DocType"
+  }
+ ],
+ "title": "Dagaar Catering"
+}

@@ -88,7 +88,8 @@
    "in_list_view": 1,
    "in_filter": 0,
    "read_only": 0,
-   "hidden": 0
+   "hidden": 0,
+   "fetch_from": "item_code.standard_rate"
   },
   {
    "fieldname": "is_optional",
@@ -116,7 +117,8 @@
    "fieldname": "bom",
    "label": "BOM",
    "fieldtype": "Link",
-   "options": "BOM"
+   "options": "BOM",
+   "fetch_from": "item_code.default_bom"
   },
   {
    "fieldname": "is_manufactured",

@@ -1,0 +1,89 @@
+{
+ "doctype": "DocType",
+ "name": "Catering Order Menu Package",
+ "module": "Catering Management",
+ "engine": "InnoDB",
+ "owner": "Administrator",
+ "creation": "2026-01-01 00:00:00",
+ "modified": "2026-01-01 00:00:00",
+ "modified_by": "Administrator",
+ "istable": 1,
+ "issingle": 0,
+ "is_submittable": 0,
+ "editable_grid": 1,
+ "track_changes": 0,
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "field_order": [
+  "menu_package",
+  "guest_count",
+  "guest_label",
+  "subtotal"
+ ],
+ "fields": [
+  {
+   "fieldname": "menu_package",
+   "label": "Menu Package",
+   "fieldtype": "Link",
+   "options": "Catering Menu Package",
+   "reqd": 1,
+   "in_list_view": 1,
+   "columns": 3
+  },
+  {
+   "fieldname": "guest_count",
+   "label": "Guest Count",
+   "fieldtype": "Int",
+   "reqd": 1,
+   "default": "1",
+   "in_list_view": 1,
+   "columns": 2,
+   "description": "Number of guests for this package"
+  },
+  {
+   "fieldname": "guest_label",
+   "label": "Guest Type / Label",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "columns": 3,
+   "description": "Optional label e.g. 'VIP', 'Children', 'Staff'"
+  },
+  {
+   "fieldname": "subtotal",
+   "label": "Subtotal",
+   "fieldtype": "Currency",
+   "options": "parent.currency",
+   "read_only": 1,
+   "in_list_view": 1,
+   "columns": 2,
+   "description": "Auto-calculated: package price \u00d7 guest count"
+  }
+ ],
+ "permissions": [
+  {
+   "role": "Catering Manager",
+   "read": 1,
+   "write": 1,
+   "create": 1,
+   "delete": 1
+  },
+  {
+   "role": "Catering Sales User",
+   "read": 1,
+   "write": 1,
+   "create": 1,
+   "delete": 1
+  },
+  {
+   "role": "Catering Auditor",
+   "read": 1
+  },
+  {
+   "role": "System Manager",
+   "read": 1,
+   "write": 1,
+   "create": 1,
+   "delete": 1
+  }
+ ]
+}

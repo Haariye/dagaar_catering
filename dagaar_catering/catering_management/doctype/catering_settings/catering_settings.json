@@ -49,7 +49,11 @@
   "auto_apply_wastage_to_cost",
   "default_mode_of_payment",
   "default_bank_account",
-  "minimum_payment_percent_for_production"
+  "minimum_payment_percent_for_production",
+  "default_wastage_account",
+  "default_food_cogs_account",
+  "default_labor_cost_account",
+  "default_delivery_cost_account"
  ],
  "fields": [
   {
@@ -430,6 +434,34 @@
    "fieldtype": "Percent",
    "default": "30",
    "description": "Catering Order must have at least this % of Sales Invoice paid before Production can start. (Manager can bypass.)"
+  },
+  {
+   "fieldname": "default_wastage_account",
+   "label": "Default Wastage Expense Account",
+   "fieldtype": "Link",
+   "options": "Account",
+   "description": "Account used for wastage cost JE postings"
+  },
+  {
+   "fieldname": "default_food_cogs_account",
+   "label": "Default Food COGS Account",
+   "fieldtype": "Link",
+   "options": "Account",
+   "description": "Cost of Goods Sold account for catering food consumption"
+  },
+  {
+   "fieldname": "default_labor_cost_account",
+   "label": "Default Labor Cost Account",
+   "fieldtype": "Link",
+   "options": "Account",
+   "description": "Account for cooking/service labor cost"
+  },
+  {
+   "fieldname": "default_delivery_cost_account",
+   "label": "Default Delivery Cost Account",
+   "fieldtype": "Link",
+   "options": "Account",
+   "description": "Account for delivery & transport costs"
   }
  ],
  "is_submittable": 0,

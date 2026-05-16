@@ -36,7 +36,8 @@
    "in_filter": 0,
    "read_only": 0,
    "hidden": 0,
-   "options": "Item"
+   "options": "Item",
+   "allow_on_submit": 1
   },
   {
    "fieldname": "item_name",
@@ -48,7 +49,8 @@
    "in_filter": 0,
    "read_only": 1,
    "hidden": 0,
-   "fetch_from": "item_code.item_name"
+   "fetch_from": "item_code.item_name",
+   "allow_on_submit": 1
   },
   {
    "fieldname": "category",
@@ -60,7 +62,8 @@
    "in_filter": 0,
    "read_only": 0,
    "hidden": 0,
-   "options": "Catering Item Category"
+   "options": "Catering Item Category",
+   "allow_on_submit": 1
   },
   {
    "fieldname": "qty_per_guest",
@@ -72,7 +75,8 @@
    "in_filter": 0,
    "read_only": 0,
    "hidden": 0,
-   "default": "1"
+   "default": "1",
+   "allow_on_submit": 1
   },
   {
    "fieldname": "total_qty",
@@ -83,7 +87,8 @@
    "in_list_view": 1,
    "in_filter": 0,
    "read_only": 1,
-   "hidden": 0
+   "hidden": 0,
+   "allow_on_submit": 1
   },
   {
    "fieldname": "uom",
@@ -96,7 +101,8 @@
    "read_only": 0,
    "hidden": 0,
    "options": "UOM",
-   "fetch_from": "item_code.stock_uom"
+   "fetch_from": "item_code.stock_uom",
+   "allow_on_submit": 1
   },
   {
    "fieldname": "rate",
@@ -107,7 +113,9 @@
    "in_list_view": 1,
    "in_filter": 0,
    "read_only": 0,
-   "hidden": 0
+   "hidden": 0,
+   "fetch_from": "item_code.standard_rate",
+   "allow_on_submit": 1
   },
   {
    "fieldname": "amount",
@@ -118,7 +126,8 @@
    "in_list_view": 1,
    "in_filter": 0,
    "read_only": 1,
-   "hidden": 0
+   "hidden": 0,
+   "allow_on_submit": 1
   },
   {
    "fieldname": "notes",
@@ -129,51 +138,60 @@
    "in_list_view": 0,
    "in_filter": 0,
    "read_only": 0,
-   "hidden": 0
+   "hidden": 0,
+   "allow_on_submit": 1
   },
   {
    "fieldname": "guest_count",
    "label": "Guest Count",
    "fieldtype": "Int",
-   "description": "Defaults to total guests; override for VIP/Children/Staff segments"
+   "description": "Defaults to total guests; override for VIP/Children/Staff segments",
+   "allow_on_submit": 1
   },
   {
    "fieldname": "bom",
    "label": "Bill of Materials",
    "fieldtype": "Link",
-   "options": "BOM"
+   "options": "BOM",
+   "fetch_from": "item_code.default_bom",
+   "allow_on_submit": 1
   },
   {
    "fieldname": "is_manufactured",
    "label": "Manufactured In-House",
    "fieldtype": "Check",
-   "default": "0"
+   "default": "0",
+   "allow_on_submit": 1
   },
   {
    "fieldname": "wastage_percent",
    "label": "Wastage %",
    "fieldtype": "Percent",
-   "default": "5"
+   "default": "5",
+   "allow_on_submit": 1
   },
   {
    "fieldname": "raw_material_cost",
    "label": "Raw Material Cost",
    "fieldtype": "Currency",
    "options": "currency",
-   "read_only": 1
+   "read_only": 1,
+   "allow_on_submit": 1
   },
   {
    "fieldname": "labor_cost_per_unit",
    "label": "Labor Cost / Unit",
    "fieldtype": "Currency",
-   "options": "currency"
+   "options": "currency",
+   "allow_on_submit": 1
   },
   {
    "fieldname": "total_cost",
    "label": "Total Cost",
    "fieldtype": "Currency",
    "options": "currency",
-   "read_only": 1
+   "read_only": 1,
+   "allow_on_submit": 1
   },
   {
    "fieldname": "menu_package_item",
@@ -181,14 +199,16 @@
    "fieldtype": "Data",
    "read_only": 1,
    "no_copy": 1,
-   "hidden": 1
+   "hidden": 1,
+   "allow_on_submit": 1
   },
   {
    "fieldname": "currency",
    "label": "Currency",
    "fieldtype": "Link",
    "options": "Currency",
-   "hidden": 1
+   "hidden": 1,
+   "allow_on_submit": 1
   }
  ],
  "is_submittable": 0,

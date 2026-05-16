@@ -44,7 +44,6 @@ doc_events = {
     },
     "Catering Cost Sheet": {
         "validate":  "dagaar_catering.catering_management.controllers.catering_cost_sheet.validate",
-        "on_submit": "dagaar_catering.catering_management.controllers.catering_cost_sheet.on_submit",
     },
     "Catering Production Plan": {
         "validate":  "dagaar_catering.catering_management.controllers.catering_production_plan.validate",
@@ -55,10 +54,10 @@ doc_events = {
         "on_submit": "dagaar_catering.catering_management.controllers.catering_closing_sheet.on_submit",
     },
     "Catering Emergency Expense": {
-        "validate":  "dagaar_catering.catering_management.controllers.catering_emergency_expense.validate",
         "on_submit": "dagaar_catering.catering_management.controllers.catering_emergency_expense.on_submit",
     },
     "Catering Wastage Entry": {
+        "validate": "dagaar_catering.catering_management.controllers.catering_wastage_entry.validate",
         "on_submit": "dagaar_catering.catering_management.controllers.catering_wastage_entry.on_submit",
     },
     "Catering Return Entry": {
@@ -88,11 +87,19 @@ doc_events = {
     "Work Order": {
         "on_submit": "dagaar_catering.catering_management.controllers.linkers.update_wo_status",
     },
+
+    # ────────────────────────────────────────────────────────────────────
+    # Live Cost Sheet refresh hooks — keep Cost Sheet absorbing expenses
+    # ────────────────────────────────────────────────────────────────────
+    "Stock Entry": {
+        "validate": "dagaar_catering.catering_management.controllers.linkers.propagate_catering_order_to_stock_entry",
+    },
 }
 
 # ─── Scheduled Tasks ─────────────────────────────────────────────────────────
 scheduler_events = {
-    "daily":   ["dagaar_catering.catering_management.tasks.daily.execute"],
+    "daily":   [
+        "dagaar_catering.catering_management.controllers.catering_order.auto_void_stale_quotations","dagaar_catering.catering_management.tasks.daily.execute"],
     "weekly":  ["dagaar_catering.catering_management.tasks.weekly.execute"],
     "monthly": ["dagaar_catering.catering_management.tasks.monthly.execute"],
 }

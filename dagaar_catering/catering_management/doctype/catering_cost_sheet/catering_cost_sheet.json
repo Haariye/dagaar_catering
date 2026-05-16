@@ -70,7 +70,8 @@
    "in_list_view": 1,
    "in_filter": 0,
    "read_only": 1,
-   "hidden": 0
+   "hidden": 0,
+   "fetch_from": "catering_order.customer_name"
   },
   {
    "fieldname": "col_break_1",
@@ -85,7 +86,8 @@
    "in_list_view": 1,
    "in_filter": 0,
    "read_only": 1,
-   "hidden": 0
+   "hidden": 0,
+   "fetch_from": "catering_order.event_date"
   },
   {
    "fieldname": "total_guests",
@@ -96,19 +98,21 @@
    "in_list_view": 0,
    "in_filter": 0,
    "read_only": 1,
-   "hidden": 0
+   "hidden": 0,
+   "fetch_from": "catering_order.total_guests"
   },
   {
    "fieldname": "company",
    "fieldtype": "Link",
    "label": "Company",
-   "reqd": 0,
+   "reqd": 1,
    "bold": 0,
    "in_list_view": 0,
    "in_filter": 0,
    "read_only": 0,
    "hidden": 0,
-   "options": "Company"
+   "options": "Company",
+   "fetch_from": "catering_order.company"
   },
   {
    "fieldname": "cost_sheet_date",
@@ -136,7 +140,8 @@
    "in_list_view": 1,
    "in_filter": 0,
    "read_only": 0,
-   "hidden": 0
+   "hidden": 0,
+   "allow_on_submit": 1
   },
   {
    "fieldname": "beverage_cost",
@@ -147,7 +152,8 @@
    "in_list_view": 0,
    "in_filter": 0,
    "read_only": 0,
-   "hidden": 0
+   "hidden": 0,
+   "allow_on_submit": 1
   },
   {
    "fieldname": "snacks_cost",
@@ -158,7 +164,8 @@
    "in_list_view": 0,
    "in_filter": 0,
    "read_only": 0,
-   "hidden": 0
+   "hidden": 0,
+   "allow_on_submit": 1
   },
   {
    "fieldname": "packaging_cost",
@@ -169,7 +176,8 @@
    "in_list_view": 0,
    "in_filter": 0,
    "read_only": 0,
-   "hidden": 0
+   "hidden": 0,
+   "allow_on_submit": 1
   },
   {
    "fieldname": "col_break_2",
@@ -184,7 +192,8 @@
    "in_list_view": 0,
    "in_filter": 0,
    "read_only": 0,
-   "hidden": 0
+   "hidden": 0,
+   "allow_on_submit": 1
   },
   {
    "fieldname": "delivery_cost",
@@ -195,7 +204,8 @@
    "in_list_view": 0,
    "in_filter": 0,
    "read_only": 0,
-   "hidden": 0
+   "hidden": 0,
+   "allow_on_submit": 1
   },
   {
    "fieldname": "rental_cost",
@@ -206,7 +216,8 @@
    "in_list_view": 0,
    "in_filter": 0,
    "read_only": 0,
-   "hidden": 0
+   "hidden": 0,
+   "allow_on_submit": 1
   },
   {
    "fieldname": "overhead_cost",
@@ -217,7 +228,8 @@
    "in_list_view": 0,
    "in_filter": 0,
    "read_only": 0,
-   "hidden": 0
+   "hidden": 0,
+   "allow_on_submit": 1
   },
   {
    "fieldname": "totals_sb",
@@ -234,7 +246,8 @@
    "in_list_view": 1,
    "in_filter": 0,
    "read_only": 1,
-   "hidden": 0
+   "hidden": 0,
+   "allow_on_submit": 1
   },
   {
    "fieldname": "total_revenue",
@@ -245,7 +258,8 @@
    "in_list_view": 0,
    "in_filter": 0,
    "read_only": 1,
-   "hidden": 0
+   "hidden": 0,
+   "allow_on_submit": 1
   },
   {
    "fieldname": "col_break_3",
@@ -260,7 +274,8 @@
    "in_list_view": 0,
    "in_filter": 0,
    "read_only": 1,
-   "hidden": 0
+   "hidden": 0,
+   "allow_on_submit": 1
   },
   {
    "fieldname": "gross_margin_percent",
@@ -271,7 +286,8 @@
    "in_list_view": 1,
    "in_filter": 0,
    "read_only": 1,
-   "hidden": 0
+   "hidden": 0,
+   "allow_on_submit": 1
   },
   {
    "fieldname": "cost_breakdown_items_sb",
@@ -289,7 +305,8 @@
    "in_filter": 0,
    "read_only": 0,
    "hidden": 0,
-   "options": "Catering Cost Sheet Item"
+   "options": "Catering Cost Sheet Item",
+   "allow_on_submit": 1
   },
   {
    "fieldname": "notes_sb",
@@ -306,7 +323,8 @@
    "in_list_view": 0,
    "in_filter": 0,
    "read_only": 0,
-   "hidden": 0
+   "hidden": 0,
+   "allow_on_submit": 1
   },
   {
    "fieldname": "reviewed_by",
@@ -318,7 +336,8 @@
    "in_filter": 0,
    "read_only": 0,
    "hidden": 0,
-   "options": "User"
+   "options": "User",
+   "allow_on_submit": 1
   }
  ],
  "is_submittable": 1,

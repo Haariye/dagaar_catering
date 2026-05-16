@@ -1,6 +1,6 @@
 {
  "charts": [],
- "content": "[{\"type\": \"header\", \"data\": {\"text\": \"<span class=\\\"h4\\\"><b>Sales &amp; Orders</b></span>\", \"col\": 12}}, {\"type\": \"card\", \"data\": {\"card_name\": \"Sales & Orders\", \"col\": 4}}, {\"type\": \"card\", \"data\": {\"card_name\": \"Menu Management\", \"col\": 4}}, {\"type\": \"card\", \"data\": {\"card_name\": \"Kitchen & Production\", \"col\": 4}}, {\"type\": \"header\", \"data\": {\"text\": \"<span class=\\\"h4\\\"><b>Finance &amp; Reports</b></span>\", \"col\": 12}}, {\"type\": \"card\", \"data\": {\"card_name\": \"Finance\", \"col\": 4}}, {\"type\": \"card\", \"data\": {\"card_name\": \"Reports\", \"col\": 8}}, {\"type\": \"header\", \"data\": {\"text\": \"<span class=\\\"h4\\\"><b>Settings</b></span>\", \"col\": 12}}, {\"type\": \"card\", \"data\": {\"card_name\": \"Settings\", \"col\": 4}}]",
+ "content": "[{\"id\":\"aEma6JKD-m\",\"type\":\"header\",\"data\":{\"text\":\"<span class=\\\"h4\\\"><b>Sales &amp; Orders</b></span>\",\"col\":12}},{\"id\":\"CmddB45JQR\",\"type\":\"card\",\"data\":{\"card_name\":\"Sales & Orders\",\"col\":4}},{\"id\":\"58KUu06aeO\",\"type\":\"card\",\"data\":{\"card_name\":\"Menu Management\",\"col\":4}},{\"id\":\"gfS2HvsD4e\",\"type\":\"card\",\"data\":{\"card_name\":\"Kitchen & Production\",\"col\":4}},{\"id\":\"NrD55vDw0e\",\"type\":\"header\",\"data\":{\"text\":\"<span class=\\\"h4\\\"><b>Finance &amp; Reports</b></span>\",\"col\":12}},{\"id\":\"SbOvEb18Hp\",\"type\":\"card\",\"data\":{\"card_name\":\"Finance\",\"col\":4}},{\"id\":\"ZEb9ldkKfg\",\"type\":\"card\",\"data\":{\"card_name\":\"Reports\",\"col\":8}},{\"id\":\"H8tgmqlpGU\",\"type\":\"header\",\"data\":{\"text\":\"<span class=\\\"h4\\\"><b>Settings</b></span>\",\"col\":12}},{\"id\":\"tAIdch5s17\",\"type\":\"card\",\"data\":{\"card_name\":\"Settings\",\"col\":4}}]",
  "creation": "2026-05-05 21:34:13.458397",
  "custom_blocks": [],
  "docstatus": 0,
@@ -162,7 +162,7 @@
   {
    "hidden": 0,
    "is_query_report": 0,
-   "label": "Reports",
+   "label": "Settings",
    "link_count": 0,
    "link_type": "DocType",
    "onboard": 0,
@@ -170,10 +170,29 @@
   },
   {
    "hidden": 0,
-   "is_query_report": 1,
-   "label": "Catering PL by Order",
+   "is_query_report": 0,
+   "label": "Catering Settings",
    "link_count": 0,
-   "link_to": "Catering PL by Order",
+   "link_to": "Catering Settings",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Reports",
+   "link_count": 10,
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Card Break"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 1,
+   "label": "Catering Order Profitability",
+   "link_count": 0,
+   "link_to": "Catering Order Profitability",
    "link_type": "Report",
    "onboard": 0,
    "type": "Link"
@@ -267,28 +286,9 @@
    "link_type": "Report",
    "onboard": 0,
    "type": "Link"
-  },
-  {
-   "hidden": 0,
-   "is_query_report": 0,
-   "label": "Settings",
-   "link_count": 0,
-   "link_type": "DocType",
-   "onboard": 0,
-   "type": "Card Break"
-  },
-  {
-   "hidden": 0,
-   "is_query_report": 0,
-   "label": "Catering Settings",
-   "link_count": 0,
-   "link_to": "Catering Settings",
-   "link_type": "DocType",
-   "onboard": 0,
-   "type": "Link"
   }
  ],
- "modified": "2026-05-10 14:16:23.105060",
+ "modified": "2026-05-16 22:05:10.104589",
  "modified_by": "Administrator",
  "module": "Catering Management",
  "name": "Dagaar Catering",
@@ -299,42 +299,6 @@
  "quick_lists": [],
  "roles": [],
  "sequence_id": 17.0,
- "shortcuts": [
-  {
-   "color": "#e74c3c",
-   "doc_view": "",
-   "label": "Catering Order",
-   "link_to": "Catering Order",
-   "type": "DocType"
-  },
-  {
-   "color": "#2ecc71",
-   "doc_view": "",
-   "label": "Cost Sheet",
-   "link_to": "Catering Cost Sheet",
-   "type": "DocType"
-  },
-  {
-   "color": "#3498db",
-   "doc_view": "",
-   "label": "Closing Sheet",
-   "link_to": "Catering Closing Sheet",
-   "type": "DocType"
-  },
-  {
-   "color": "#f39c12",
-   "doc_view": "",
-   "label": "Production Plan",
-   "link_to": "Catering Production Plan",
-   "type": "DocType"
-  },
-  {
-   "color": "#7f8c8d",
-   "doc_view": "",
-   "label": "Settings",
-   "link_to": "Catering Settings",
-   "type": "DocType"
-  }
- ],
+ "shortcuts": [],
  "title": "Dagaar Catering"
 }

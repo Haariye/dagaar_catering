@@ -115,91 +115,23 @@ def create_default_settings():
 # ════════════════════════════════════════════════════════════════════════════
 
 def create_catering_workflows():
-	_create_order_workflow()
-	_create_emergency_expense_workflow()
+	"""DISABLED — Workflows were removed in v3 (replaced by native Submit/Cancel).
+
+	This stub keeps the function name in place so the after_migrate caller
+	doesn't blow up, but it does nothing. Do not re-enable: the docstatus-based
+	flow is now the source of truth.
+	"""
+	pass
 
 
 def _create_order_workflow():
-	if frappe.db.exists("Workflow", "Catering Order Approval"):
-		return
-	if not frappe.db.exists("DocType", "Catering Order"):
-		return
-	# Check workflow_state column exists in tabCatering Order before creating workflow
-	if not _column_exists("tabCatering Order", "workflow_state"):
-		return
-
-	wf = frappe.new_doc("Workflow")
-	wf.workflow_name = "Catering Order Approval"
-	wf.document_type = "Catering Order"
-	wf.workflow_state_field = "workflow_state"
-	wf.is_active = 1
-	wf.override_status = 0
-	wf.send_email_alert = 0
-
-	for state, doc_status, allow_edit, style in [
-		("Draft",            "0", "Catering Manager",    "Warning"),
-		("Pending Approval", "0", "Catering Management", "Warning"),
-		("Approved",         "0", "Catering Manager",    "Success"),
-		("Rejected",         "0", "Catering Manager",    "Danger"),
-	]:
-		wf.append("states", {
-			"state": state, "doc_status": doc_status,
-			"allow_edit": allow_edit, "style": style,
-		})
-
-	for state, action, next_state, allowed, self_approval in [
-		("Draft",            "Submit for Approval", "Pending Approval", "Catering Manager",    1),
-		("Pending Approval", "Approve",             "Approved",         "Catering Management", 0),
-		("Pending Approval", "Reject",              "Rejected",         "Catering Management", 0),
-		("Rejected",         "Revise",              "Draft",            "Catering Manager",    1),
-	]:
-		wf.append("transitions", {
-			"state": state, "action": action, "next_state": next_state,
-			"allowed": allowed, "allow_self_approval": self_approval,
-		})
-
-	wf.insert(ignore_permissions=True)
+	pass
 
 
 def _create_emergency_expense_workflow():
-	if frappe.db.exists("Workflow", "Emergency Expense Approval"):
-		return
-	if not frappe.db.exists("DocType", "Catering Emergency Expense"):
-		return
-	if not _column_exists("tabCatering Emergency Expense", "workflow_state"):
-		return
+	pass
 
-	wf = frappe.new_doc("Workflow")
-	wf.workflow_name = "Emergency Expense Approval"
-	wf.document_type = "Catering Emergency Expense"
-	wf.workflow_state_field = "workflow_state"
-	wf.is_active = 1
-	wf.override_status = 0
-	wf.send_email_alert = 0
 
-	for state, doc_status, allow_edit, style in [
-		("Draft",                    "0", "Catering Procurement User", "Warning"),
-		("Pending Manager Approval", "0", "Catering Manager",          "Warning"),
-		("Approved",                 "0", "Catering Finance User",     "Success"),
-		("Rejected",                 "0", "Catering Procurement User", "Danger"),
-	]:
-		wf.append("states", {
-			"state": state, "doc_status": doc_status,
-			"allow_edit": allow_edit, "style": style,
-		})
-
-	for state, action, next_state, allowed, self_approval in [
-		("Draft",                    "Request Approval", "Pending Manager Approval", "Catering Procurement User", 1),
-		("Pending Manager Approval", "Approve",          "Approved",                 "Catering Manager",          0),
-		("Pending Manager Approval", "Reject",           "Rejected",                 "Catering Manager",          0),
-		("Rejected",                 "Revise",           "Draft",                    "Catering Procurement User", 1),
-	]:
-		wf.append("transitions", {
-			"state": state, "action": action, "next_state": next_state,
-			"allowed": allowed, "allow_self_approval": self_approval,
-		})
-
-	wf.insert(ignore_permissions=True)
 
 
 def _column_exists(table, column):

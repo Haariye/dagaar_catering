@@ -1,36 +1,50 @@
-# Copyright (c) 2024, DagaarSoft — catering_wastage_entry.py
+# Copyright (c) 2024, DagaarSoft
+"""Catering Wastage Entry — validation and totals."""
 
 import frappe
+from frappe import _
 from frappe.utils import flt
 
 
-def on_submit(doc, method=None):
-	for item in (doc.items or []):
-		item.amount = flt(item.qty) * flt(item.valuation_rate)
-	doc.total_wastage_value = sum(flt(i.amount) for i in (doc.items or []))
-	_create_stock_entry(doc)
-
-
-def _create_stock_entry(doc):
+def validate(doc, method=None):
+	# Default warehouse from settings if blank
 	if not doc.warehouse:
-		return
-	try:
-		se = frappe.new_doc("Stock Entry")
-		se.stock_entry_type = "Material Issue"
-		se.purpose = "Material Issue"
-		se.posting_date = doc.posting_date
-		se.company = doc.company
-		se.catering_order = doc.catering_order
-		se.remarks = f"Wastage: {doc.name}"
-		for item in (doc.items or []):
-			se.append("items", {
-				"item_code": item.item_code,
-				"qty": flt(item.qty),
-				"uom": item.uom,
-				"s_warehouse": doc.warehouse,
-				"basic_rate": flt(item.valuation_rate),
-			})
-		se.insert(ignore_permissions=True)
-		frappe.db.set_value("Catering Wastage Entry", doc.name, "stock_entry", se.name)
-	except Exception as e:
-		frappe.log_error(f"Stock Entry for wastage {doc.name}: {e}")
+		try:
+			settings = frappe.get_single("Catering Settings")
+			doc.warehouse = (settings.get("default_wastage_warehouse")
+			                 or settings.get("default_warehouse"))
+		except Exception:
+			pass
+
+	# Compute amount per child row (qty × valuation_rate)
+	total = 0
+	for row in (doc.get("items") or []):
+		if not row.valuation_rate and row.item_code:
+			try:
+				row.valuation_rate = flt(
+					frappe.db.get_value("Item", row.item_code, "valuation_rate")
+				)
+			except Exception:
+				pass
+		# Cascade warehouse from parent if blank
+		if not row.warehouse:
+			row.warehouse = doc.warehouse
+		row.amount = flt(row.qty) * flt(row.valuation_rate)
+		total += flt(row.amount)
+
+	doc.total_wastage_value = total
+
+
+def on_submit(doc, method=None):
+	"""Hook on submit — currently no extra action needed.
+
+	The live profitability function reads Wastage values directly via SQL,
+	so no cache refresh is required. This stub exists so the hook in hooks.py
+	can resolve cleanly.
+	"""
+	pass
+
+
+def on_cancel(doc, method=None):
+	"""Hook on cancel — no-op for the same reason."""
+	pass

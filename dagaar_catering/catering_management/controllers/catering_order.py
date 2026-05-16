@@ -51,18 +51,146 @@ def _safe_sum_with_catering_link(table_name, column, catering_order, extra_where
 
 
 # ════════════════════════════════════════════════════════════════════════════
-# DOCUMENT LIFECYCLE HOOKS
+# CHANGE-DETECTION SNAPSHOT (for auto-cancel-and-regenerate on guest/item change)
 # ════════════════════════════════════════════════════════════════════════════
 
+def _compute_order_snapshot(doc):
+	"""MD5 hash of the order's billable contents.
+
+	Includes:
+	  - menu_packages rows (menu_package + guest_count)
+	  - items rows (item_code + total_qty + rate)
+	  - total_guests
+	  - discount_amount / discount_percent
+
+	If this hash changes between saves and a Sales Invoice exists,
+	requires_rebill is set so on_update will auto-sync the SI.
+	"""
+	import hashlib, json
+	payload = {
+		"total_guests": flt(doc.total_guests),
+		"discount_amount": flt(doc.discount_amount or 0),
+		"discount_percent": flt(doc.discount_percent or 0),
+		"menu_packages": sorted([
+			{"pkg": p.menu_package, "gc": flt(p.guest_count), "label": p.guest_label or ""}
+			for p in (doc.get("menu_packages") or [])
+		], key=lambda x: (str(x["pkg"]), x["gc"])),
+		"items": sorted([
+			{
+				"code": it.item_code,
+				"qty": flt(it.total_qty),
+				"rate": flt(it.rate),
+			}
+			for it in (doc.get("items") or []) if it.item_code
+		], key=lambda x: (str(x["code"]), x["qty"], x["rate"])),
+	}
+	j = json.dumps(payload, sort_keys=True, default=str)
+	return hashlib.md5(j.encode()).hexdigest()
+
+
+
+def _check_for_rebilling_required(doc):
+	"""Compare snapshot vs last_billed_snapshot. Set requires_rebill flag.
+
+	DOES NOT update last_billed_snapshot — that's done ONLY in:
+	  - create_sales_invoice (when SI is first created)
+	  - update_sales_invoice (when user clicks Regenerate Bill)
+
+	If last_billed_snapshot is empty and SI exists, we backfill it once
+	to the current snapshot (treats first-time case as 'no change').
+	"""
+	if not doc.get("sales_invoice"):
+		doc.requires_rebill = 0
+		return
+
+	current = _compute_order_snapshot(doc)
+	last = doc.get("last_billed_snapshot") or ""
+
+	if not last:
+		# Backfill once — for legacy orders that pre-date snapshotting
+		doc.last_billed_snapshot = current
+		doc.requires_rebill = 0
+		return
+
+	doc.requires_rebill = 1 if current != last else 0
+
+
+
 def validate(doc, method=None):
-	_load_settings_defaults(doc)
-	_calculate_totals(doc)
-	_compute_balance(doc)
-	_validate_event_date(doc)
+	"""Catering Order validate hook."""
+	_check_locked_after_production(doc)
 	_validate_guests(doc)
-	_validate_margin_warning(doc)
+	_calculate_totals(doc)
 	_set_status(doc)
-	_set_title(doc)
+	_check_for_rebilling_required(doc)
+
+
+def _check_locked_after_production(doc):
+	"""Once a Production Plan is created/linked, certain fields are frozen.
+
+	Blocks edits to: menu_packages, items, total_guests, discount.
+	The rule: if any production has started, changes must go to a NEW Catering Order.
+
+	Bypass: managers can override (rare) by setting flags.ignore_pp_lock.
+	"""
+	if not doc.production_plan:
+		return  # No production plan yet — everything editable
+	if doc.docstatus != 1:
+		return  # Not submitted yet — no lock
+	if getattr(doc.flags, "ignore_pp_lock", False):
+		return  # Manager override
+
+	# Compare current state to last-persisted state
+	prev = doc.get_doc_before_save()
+	if not prev:
+		return  # First save — nothing to compare
+
+	locked_fields = ["menu_packages", "items", "total_guests"]
+	changed = []
+
+	for field in locked_fields:
+		new_val = doc.get(field)
+		old_val = prev.get(field)
+		if field in ("menu_packages", "items"):
+			# Compare child tables by content fingerprint
+			if _table_fingerprint(new_val) != _table_fingerprint(old_val):
+				changed.append(field)
+		elif flt(new_val) != flt(old_val):
+			changed.append(field)
+
+	if changed:
+		frappe.throw(_(
+			"This Catering Order has reached the Production Plan stage. "
+			"The following fields are locked and cannot be changed: <b>{0}</b>. "
+			"To make changes, please create a new Catering Order for the customer."
+		).format(", ".join(changed)),
+		title=_("Order Locked — Production Started"))
+
+
+def _table_fingerprint(rows):
+	"""Stable hash of a child-table contents (ignoring row order/idx)."""
+	if not rows:
+		return ""
+	import hashlib, json
+	data = []
+	for r in rows:
+		if hasattr(r, 'as_dict'):
+			d = r.as_dict()
+		else:
+			d = dict(r)
+		# Exclude unstable fields
+		for k in ('name', 'idx', 'modified', 'creation', 'owner', 'modified_by',
+		          'docstatus', 'parent', 'parenttype', 'parentfield'):
+			d.pop(k, None)
+		data.append(d)
+	# Sort by item_code if present
+	try:
+		data.sort(key=lambda x: str(x.get('item_code') or x.get('menu_package') or ''))
+	except Exception:
+		pass
+	j = json.dumps(data, default=str, sort_keys=True)
+	return hashlib.md5(j.encode()).hexdigest()
+
 
 
 def before_save(doc, method=None):
@@ -74,14 +202,24 @@ def before_save(doc, method=None):
 
 def after_insert(doc, method=None):
 	_log_activity(doc, "Order Created", f"Catering Order created for {doc.customer_name or doc.customer}")
-	if doc.menu_package and not doc.items:
-		_load_menu_package(doc)
+	# Auto-load items if menu_packages were already added during creation
+	if doc.get("menu_packages") and not doc.items:
+		_load_menu_packages_items(doc)
+		doc.save(ignore_permissions=True)
 
 
 def on_update(doc, method=None):
-	prev = doc.get_doc_before_save()
-	if prev and prev.menu_package != doc.menu_package and doc.menu_package:
-		_load_menu_package(doc)
+	"""No-op.
+
+	Amendment workflow is purely manual now:
+	  1. User edits menu_packages or items
+	  2. User clicks Save
+	  3. validate() detects the change via snapshot, sets requires_rebill=1
+	  4. The red Regenerate Bill button appears
+	  5. User clicks Regenerate Bill -> update_sales_invoice runs explicitly
+	"""
+	pass
+
 
 
 def on_submit(doc, method=None):
@@ -90,10 +228,135 @@ def on_submit(doc, method=None):
 		frappe.db.set_value(doc.doctype, doc.name, "status", "Confirmed")
 
 
-def on_cancel(doc, method=None):
-	frappe.db.set_value(doc.doctype, doc.name, "status", "Cancelled")
-	_log_activity(doc, "Status Change", f"Catering Order {doc.name} cancelled")
 
+
+def on_cancel(doc, method=None):
+	"""When Catering Order is cancelled, force-cancel all linked documents.
+
+	Order of cancellation (reverse dependency):
+	  1. Closing Sheet
+	  2. Delivery Note(s)
+	  3. Delivery Plan
+	  4. Material Request(s)
+	  5. Work Order(s) under Production Plan
+	  6. Production Plan
+	  7. Cost Sheet (with its JE)
+	  8. Wastage Entries (with their JE and Stock Entry)
+	  9. Emergency Expenses (with their JE)
+	  10. Payment Entry(s) — reverses GL postings
+	  11. Sales Invoice(s) — supplementary first, then primary
+	  12. Sales Order
+
+	All cancellations use ignore_permissions and ignore_link checks.
+	"""
+	catering_order = doc.name
+
+	def _force_cancel(doctype, name, reason="parent order cancelled"):
+		"""Cancel a single doc, swallowing all errors."""
+		if not name:
+			return
+		try:
+			d = frappe.get_doc(doctype, name)
+			if d.docstatus == 1:
+				d.flags.ignore_permissions = True
+				d.flags.ignore_links = True
+				d.flags.ignore_on_trash = True
+				d.cancel()
+		except Exception as e:
+			frappe.log_error(f"Cascade cancel failed: {doctype} {name}: {str(e)[:200]}",
+				"Catering Order Cancel Cascade")
+
+	# 1. Closing Sheet
+	cs = frappe.db.get_value("Catering Closing Sheet",
+		{"catering_order": catering_order, "docstatus": 1}, "name")
+	_force_cancel("Catering Closing Sheet", cs)
+
+	# 2. Delivery Notes (via catering_order link)
+	dns = frappe.db.sql("""SELECT name FROM `tabDelivery Note`
+		WHERE catering_order = %s AND docstatus = 1""", catering_order, as_dict=True)
+	for row in dns:
+		_force_cancel("Delivery Note", row.name)
+
+	# 3. Delivery Plan
+	dp = frappe.db.get_value("Catering Delivery Plan",
+		{"catering_order": catering_order, "docstatus": 1}, "name")
+	_force_cancel("Catering Delivery Plan", dp)
+
+	# 4. Material Requests
+	mrs = frappe.db.sql("""SELECT name FROM `tabMaterial Request`
+		WHERE catering_order = %s AND docstatus = 1""", catering_order, as_dict=True)
+	for row in mrs:
+		_force_cancel("Material Request", row.name)
+
+	# 5. Work Orders under Production Plan
+	pp_name = frappe.db.get_value("Catering Production Plan",
+		{"catering_order": catering_order, "docstatus": 1}, "name")
+	if pp_name:
+		wos = frappe.db.sql("""SELECT name FROM `tabWork Order`
+			WHERE catering_order = %s AND docstatus = 1""", catering_order, as_dict=True)
+		for row in wos:
+			# Cancel any Stock Entries first
+			ses = frappe.db.sql("""SELECT name FROM `tabStock Entry`
+				WHERE work_order = %s AND docstatus = 1""", row.name, as_dict=True)
+			for se in ses:
+				_force_cancel("Stock Entry", se.name)
+			_force_cancel("Work Order", row.name)
+		# 6. Production Plan itself
+		_force_cancel("Catering Production Plan", pp_name)
+
+	# 7. Cost Sheet (its on_cancel hook will cancel the JE)
+	cost_sheet = frappe.db.get_value("Catering Cost Sheet",
+		{"catering_order": catering_order, "docstatus": 1}, "name")
+	_force_cancel("Catering Cost Sheet", cost_sheet)
+
+	# 8. Wastage Entries
+	wastages = frappe.db.sql("""SELECT name FROM `tabCatering Wastage Entry`
+		WHERE catering_order = %s AND docstatus = 1""", catering_order, as_dict=True)
+	for row in wastages:
+		_force_cancel("Catering Wastage Entry", row.name)
+
+	# 9. Emergency Expenses
+	emrgs = frappe.db.sql("""SELECT name FROM `tabCatering Emergency Expense`
+		WHERE catering_order = %s AND docstatus = 1""", catering_order, as_dict=True)
+	for row in emrgs:
+		_force_cancel("Catering Emergency Expense", row.name)
+
+	# 10. Payment Entries (direct + via Sales Invoice references)
+	si_names = frappe.db.sql_list("""SELECT name FROM `tabSales Invoice`
+		WHERE catering_order = %s""", catering_order)
+	pe_set = set()
+	# Direct PEs
+	for row in frappe.db.sql("""SELECT name FROM `tabPayment Entry`
+		WHERE catering_order = %s AND docstatus = 1""", catering_order, as_dict=True):
+		pe_set.add(row.name)
+	# PEs that reference any of our Sales Invoices
+	for si in si_names:
+		for row in frappe.db.sql("""SELECT DISTINCT pe.name FROM `tabPayment Entry` pe
+			INNER JOIN `tabPayment Entry Reference` per ON per.parent = pe.name
+			WHERE per.reference_doctype = 'Sales Invoice' AND per.reference_name = %s
+			  AND pe.docstatus = 1""", si, as_dict=True):
+			pe_set.add(row.name)
+	for pe_name in pe_set:
+		_force_cancel("Payment Entry", pe_name)
+
+	# 11. Sales Invoices — cancel credit notes / supplementary first (those with is_return),
+	#     then primary invoices
+	sis_return_first = frappe.db.sql("""SELECT name FROM `tabSales Invoice`
+		WHERE catering_order = %s AND docstatus = 1
+		ORDER BY is_return DESC, creation DESC""", catering_order, as_dict=True)
+	for row in sis_return_first:
+		_force_cancel("Sales Invoice", row.name)
+
+	# 12. Sales Order
+	so_name = frappe.db.get_value("Sales Order",
+		{"catering_order": catering_order, "docstatus": 1}, "name")
+	_force_cancel("Sales Order", so_name)
+
+	# Log the cascade
+	frappe.db.set_value("Catering Order", catering_order, "status", "Cancelled", update_modified=False)
+	_log_activity(doc, "Document Cancelled", f"Cascade cancel: order and all linked documents")
+	frappe.msgprint(_("Catering Order cancelled — all linked documents force-cancelled."),
+		indicator="red", alert=True)
 
 # ════════════════════════════════════════════════════════════════════════════
 # AUTO-FETCHING
@@ -156,74 +419,62 @@ def _fetch_primary_contact(doc):
 		pass
 
 
-def _load_menu_package(doc):
-	if not doc.menu_package:
-		return
-	try:
-		pkg = frappe.get_doc("Catering Menu Package", doc.menu_package)
-	except frappe.DoesNotExistError:
-		return
-
-	if pkg.price_per_guest and not doc.price_per_guest:
-		doc.price_per_guest = pkg.price_per_guest
-	if pkg.default_currency and not doc.currency:
-		doc.currency = pkg.default_currency
-
-	if doc.items:
-		return  # don't auto-load if items already exist
-
-	for pi in (pkg.items or []):
-		doc.append("items", {
-			"item_code": pi.item_code,
-			"item_name": pi.item_name,
-			"category": pi.category,
-			"qty_per_guest": pi.qty_per_guest,
-			"uom": pi.uom,
-			"rate": pi.rate or 0,
-			"bom": pi.bom,
-			"is_manufactured": pi.is_manufactured,
-			"wastage_percent": pi.wastage_percent or 5,
-			"guest_count": doc.total_guests,
-			"menu_package_item": pi.name,
-			"currency": doc.currency,
-		})
-
-	frappe.msgprint(_("Loaded {0} items from Menu Package {1}").format(
-		len(pkg.items or []), pkg.package_name), indicator="blue", alert=True)
-
 
 # ════════════════════════════════════════════════════════════════════════════
 # CALCULATIONS
 # ════════════════════════════════════════════════════════════════════════════
 
 def _calculate_totals(doc):
-	total_guests = flt(doc.total_guests) or 1
+	"""Recompute order totals from menu_packages and items child tables.
 
+	New model: menu_packages is a child table where each row has a package and a guest count.
+	  total_guests = SUM of all guest_count values across packages
+	  Items in the `items` child table carry their own guest_count (set during load).
+	  total_qty per item = qty_per_guest × that item's guest_count
+	  amount per item = total_qty × rate
+
+	The `subtotal` is the sum of item amounts plus tax/discount.
+	"""
+	# Total guests = sum across packages
+	total_guests = 0
+	for pkg_row in (doc.get("menu_packages") or []):
+		total_guests += int(pkg_row.guest_count or 0)
+		# Compute subtotal per package row for display
+		try:
+			pkg_price = flt(frappe.db.get_value("Catering Menu Package", pkg_row.menu_package, "price_per_guest")) or 0
+			pkg_row.subtotal = pkg_price * flt(pkg_row.guest_count or 0)
+		except Exception:
+			pkg_row.subtotal = 0
+
+	doc.total_guests = total_guests
+
+	# Recompute item totals
+	subtotal = 0
 	for item in (doc.items or []):
-		gc = flt(item.guest_count) or total_guests
-		item.guest_count = gc
-		item.total_qty = flt(item.qty_per_guest) * gc
-		item.amount = flt(item.total_qty) * flt(item.rate)
-		base_cost = flt(item.raw_material_cost) + flt(item.labor_cost_per_unit) * flt(item.total_qty)
-		wastage_factor = 1 + (flt(item.wastage_percent) / 100)
-		item.total_cost = base_cost * wastage_factor
-		item.currency = doc.currency
+		gc = flt(item.guest_count or 0)
+		item.total_qty = flt(item.qty_per_guest or 0) * gc
+		item.amount = flt(item.total_qty) * flt(item.rate or 0)
+		subtotal += flt(item.amount)
 
-	for gt in (doc.guest_types or []):
-		gt.amount = flt(gt.guest_count) * flt(gt.rate_per_guest)
-		gt.currency = doc.currency
-
-	subtotal = sum(flt(i.amount) for i in (doc.items or []))
-	subtotal += sum(flt(g.amount) for g in (doc.guest_types or []))
 	doc.subtotal = subtotal
 
-	doc.discount_amount = subtotal * flt(doc.discount_percent) / 100
-	after_discount = subtotal - doc.discount_amount
+	# Discount
+	if flt(doc.discount_percent):
+		doc.discount_amount = subtotal * flt(doc.discount_percent) / 100
+	elif flt(doc.discount_amount):
+		doc.discount_percent = (flt(doc.discount_amount) / subtotal * 100) if subtotal else 0
 
-	doc.total_taxes = doc.total_taxes or 0
-	doc.total_order_value = after_discount + flt(doc.total_taxes)
+	# Total order value
+	doc.total_order_value = (
+		flt(doc.subtotal)
+		- flt(doc.discount_amount or 0)
+		+ flt(doc.total_taxes or 0)
+	)
 
-	doc.deposit_amount = flt(doc.total_order_value) * flt(doc.deposit_percent) / 100
+	# Deposit suggestion
+	if flt(doc.deposit_percent):
+		doc.deposit_amount = flt(doc.total_order_value) * flt(doc.deposit_percent) / 100
+
 
 
 def _compute_balance(doc):
@@ -245,21 +496,56 @@ def _validate_event_date(doc):
 
 
 def _validate_guests(doc):
-	if flt(doc.total_guests) <= 0:
-		frappe.throw(_("Total Guests must be greater than 0."))
-	if doc.menu_package:
+	"""Validate guest counts:
+	  - Each package row must have guest_count >= 1
+	  - Each package row's guest_count must be >= package.minimum_guests (if set)
+	  - Total guests across all packages must be > 0
+
+	No max enforcement — packages can scale up freely.
+	"""
+	if not (doc.get("menu_packages") or []):
+		frappe.throw(_("At least one menu package row is required."),
+			title=_("Menu Packages Missing"))
+
+	errors = []
+
+	# Per-row zero check + min_guests check
+	for idx, pkg_row in enumerate(doc.get("menu_packages") or [], start=1):
+		if not pkg_row.menu_package:
+			errors.append(_("Row #{0}: Menu Package is empty").format(idx))
+			continue
+
+		gc = flt(pkg_row.guest_count or 0)
+		if gc < 1:
+			errors.append(_("Row #{0} ({1}): guest count must be at least 1").format(
+				idx, pkg_row.menu_package))
+			continue
+
 		try:
-			pkg = frappe.get_cached_doc("Catering Menu Package", doc.menu_package)
-			if pkg.min_guests and doc.total_guests < pkg.min_guests:
-				frappe.msgprint(_("Total Guests {0} is below minimum {1} for package {2}").format(
-					doc.total_guests, pkg.min_guests, pkg.package_name),
-					indicator="orange", alert=True)
-			if pkg.max_guests and doc.total_guests > pkg.max_guests:
-				frappe.msgprint(_("Total Guests {0} exceeds maximum {1} for package {2}").format(
-					doc.total_guests, pkg.max_guests, pkg.package_name),
-					indicator="orange", alert=True)
+			pkg = frappe.get_cached_doc("Catering Menu Package", pkg_row.menu_package)
 		except Exception:
-			pass
+			continue  # package master missing — let other validation handle it
+
+		min_g = flt(pkg.minimum_guests or 0)
+		if min_g > 0 and gc < min_g:
+			errors.append(
+				_("Row #{0} <b>{1}</b>: guest count <b>{2}</b> is below minimum <b>{3}</b>").format(
+					idx, pkg.package_name or pkg_row.menu_package, int(gc), int(min_g)
+				)
+			)
+
+	if errors:
+		frappe.throw(
+			"<br>".join(errors) + "<br><br>" +
+			_("Fix the rows above before saving."),
+			title=_("Guest Count Validation Failed")
+		)
+
+	# Final total check (defensive)
+	if flt(doc.total_guests) <= 0:
+		frappe.throw(_("Total Guests must be greater than 0."),
+			title=_("Guest Count Validation Failed"))
+
 
 
 def _validate_margin_warning(doc):
@@ -282,9 +568,34 @@ def _validate_margin_warning(doc):
 
 
 def _set_status(doc):
+	"""Auto-set status based on docstatus and linked-doc state.
+
+	Status precedence:
+	  1. Cancelled / Closed (terminal — never change)
+	  2. docstatus 2 → Cancelled
+	  3. docstatus 0 → Draft
+	  4. docstatus 1 (Submitted): check operational state
+	     - sales_invoice exists & outstanding <= 0 → Paid
+	     - sales_invoice exists → Invoiced
+	     - delivery_note exists → Delivered
+	     - delivery_plan delivered → Delivered
+	     - production_plan complete → Ready to Deliver
+	     - production_plan exists → In Production
+	     - sales_order exists → Confirmed
+	     - else → Confirmed (submitted, ready to start)
+	"""
 	if doc.status in ("Cancelled", "Closed"):
 		return
 
+	if doc.docstatus == 2:
+		doc.status = "Cancelled"
+		return
+
+	if doc.docstatus == 0:
+		doc.status = "Draft"
+		return
+
+	# docstatus == 1 — submitted, compute operational status
 	if doc.sales_invoice:
 		try:
 			outstanding = flt(frappe.db.get_value("Sales Invoice", doc.sales_invoice, "outstanding_amount"))
@@ -314,20 +625,13 @@ def _set_status(doc):
 		except Exception:
 			pass
 
-	if flt(doc.deposit_received) >= flt(doc.deposit_amount) and flt(doc.deposit_amount) > 0:
-		doc.status = "Deposit Received"
-		return
-
 	if doc.sales_order:
 		doc.status = "Confirmed"
 		return
 
-	if doc.quotation:
-		doc.status = "Quoted"
-		return
+	# Submitted but no operational documents yet
+	doc.status = "Confirmed"
 
-	if not doc.status or doc.status == "":
-		doc.status = "Draft"
 
 
 def _set_title(doc):
@@ -340,6 +644,29 @@ def _set_title(doc):
 # ════════════════════════════════════════════════════════════════════════════
 
 def _log_activity(doc, activity_type, description, ref_dt=None, ref_name=None):
+	"""Log significant activities only. Returns silently for routine events.
+
+	Allowed types (the meaningful ones):
+	  - Order Created
+	  - Order Submitted
+	  - Order Cancelled
+	  - Order Voided
+	  - Order Closed
+	  - Order Reopened
+	  - Rejection (kept for audit)
+
+	For everything else (Status Change, Document Created, Document Submitted,
+	Document Cancelled, Payment Received, Production Update, Delivery Update,
+	Note Added, Approval, Other), Frappe's built-in Version + Comment + Activity
+	history already provides full audit — no need for custom logging.
+	"""
+	ALLOWED = {
+		"Order Created", "Order Submitted", "Order Cancelled",
+		"Order Voided", "Order Closed", "Order Reopened", "Rejection",
+	}
+	if activity_type not in ALLOWED:
+		return  # silently skip noise
+
 	settings = _get_settings()
 	if settings and not cint(settings.auto_create_activity_log):
 		return
@@ -355,10 +682,6 @@ def _log_activity(doc, activity_type, description, ref_dt=None, ref_name=None):
 		log.insert(ignore_permissions=True)
 	except Exception:
 		pass
-
-
-
-
 
 
 
@@ -481,6 +804,125 @@ def _create_doc_with_naming(doctype):
 	return doc
 
 
+
+
+def _load_menu_packages_items(doc):
+	"""Load items into the order's items table by exploding all menu_packages × guest_count.
+
+	For each menu package row (with its own guest count), iterate package's items and add
+	rows to the order's items table, each with qty_per_guest × guest_count = total_qty.
+	Duplicates (same item_code) are NOT merged — kept separate per package so the user
+	can see which package each row came from.
+	"""
+	if not doc.get("menu_packages"):
+		return
+
+	# Clear existing items if any (only when explicitly reloading)
+	doc.set("items", [])
+
+	for pkg_row in doc.menu_packages:
+		try:
+			pkg = frappe.get_cached_doc("Catering Menu Package", pkg_row.menu_package)
+		except Exception:
+			continue
+
+		for pi in (pkg.items or []):
+			doc.append("items", {
+				"item_code": pi.item_code,
+				"item_name": pi.item_name,
+				"category": pi.category,
+				"qty_per_guest": flt(pi.qty_per_guest or 0),
+				"uom": pi.uom,
+				"rate": flt(pi.rate or 0),
+				"bom": pi.bom,
+				"is_manufactured": pi.is_manufactured,
+				"wastage_percent": flt(pi.wastage_percent or 0),
+				"guest_count": int(pkg_row.guest_count or 0),
+				"menu_package_item": pi.name,
+				"currency": doc.currency,
+			})
+
+	_calculate_totals(doc)
+
+
+@frappe.whitelist()
+def load_menu_packages_items(catering_order):
+	"""Whitelisted endpoint to reload items from packages.
+
+	Works for both Draft (docstatus=0) and Submitted (docstatus=1) orders.
+	For submitted orders, we use the special update_after_submit path that
+	respects allow_on_submit=1 on the items child table.
+	"""
+	co = frappe.get_doc("Catering Order", catering_order)
+	if co.docstatus == 2:
+		frappe.throw(_("Cannot reload items on a cancelled order."))
+	if co.status == "Closed":
+		frappe.throw(_("Cannot reload items on a Closed order."))
+
+	_load_menu_packages_items(co)
+
+	if co.docstatus == 0:
+		# Draft — normal save path
+		co.save(ignore_permissions=True)
+	else:
+		# Submitted — use update_after_submit which respects allow_on_submit
+		co.flags.ignore_permissions = True
+		co.flags.ignore_validate_update_after_submit = False
+		try:
+			co.save(ignore_permissions=True)
+		except frappe.exceptions.UpdateAfterSubmitError:
+			# Fall back to direct DB manipulation if Frappe complains about disallowed fields
+			_force_persist_after_submit(co)
+
+	return co.name
+
+
+def _force_persist_after_submit(co):
+	"""Persist changes to a submitted Catering Order using db_set + child SQL.
+
+	Used when normal save() raises UpdateAfterSubmitError on fields that don't
+	have allow_on_submit=1 (we should rarely hit this, but it's a safety net).
+	"""
+	# Clear existing items in the DB
+	frappe.db.delete("Catering Order Item", {"parent": co.name})
+
+	# Re-insert the items
+	for idx, item in enumerate(co.get("items") or []):
+		row = frappe.new_doc("Catering Order Item")
+		row.parent = co.name
+		row.parenttype = "Catering Order"
+		row.parentfield = "items"
+		row.idx = idx + 1
+		row.item_code = item.item_code
+		row.item_name = item.item_name
+		row.category = item.category
+		row.qty_per_guest = item.qty_per_guest
+		row.uom = item.uom
+		row.rate = item.rate
+		row.bom = item.bom
+		row.is_manufactured = item.is_manufactured
+		row.wastage_percent = item.wastage_percent
+		row.guest_count = item.guest_count
+		row.menu_package_item = item.menu_package_item
+		row.total_qty = item.total_qty
+		row.amount = item.amount
+		row.currency = co.currency
+		row.db_insert()
+
+	# Update the parent totals via db_set (works for allow_on_submit fields)
+	for field in ('total_guests', 'subtotal', 'discount_amount', 'total_order_value',
+	              'deposit_amount', 'balance_due'):
+		try:
+			frappe.db.set_value("Catering Order", co.name, field,
+				co.get(field) or 0, update_modified=False)
+		except Exception:
+			pass
+
+	co.flags.requires_rebill = 1
+	frappe.db.set_value("Catering Order", co.name, "requires_rebill", 1, update_modified=False)
+	frappe.db.commit()
+
+
 # ════════════════════════════════════════════════════════════════════════════
 # WHITELISTED ACTIONS
 # ════════════════════════════════════════════════════════════════════════════
@@ -490,6 +932,7 @@ def _create_doc_with_naming(doctype):
 def create_sales_order(catering_order, auto_submit=0):
 	"""Create Sales Order from Catering Order."""
 	co = frappe.get_doc("Catering Order", catering_order)
+	_check_approval_gate(co)
 	if co.sales_order:
 		frappe.throw(_("Sales Order {0} already exists.").format(co.sales_order))
 	if not co.items:
@@ -566,6 +1009,7 @@ def get_sales_invoice_defaults(catering_order):
 def create_sales_invoice(catering_order, additional_discount=None, auto_submit=0):
 	"""Create Sales Invoice with optional additional discount."""
 	co = frappe.get_doc("Catering Order", catering_order)
+	_check_approval_gate(co)
 	if co.sales_invoice:
 		frappe.throw(_("Sales Invoice {0} already exists.").format(co.sales_invoice))
 
@@ -581,6 +1025,7 @@ def create_sales_invoice(catering_order, additional_discount=None, auto_submit=0
 	si.conversion_rate = flt(co.conversion_rate) or 1
 	si.selling_price_list = co.price_list
 
+	_default_income = co.income_account or _settings_account("default_cogs_account")
 	for it in co.items:
 		si.append("items", {
 			"item_code": it.item_code,
@@ -588,7 +1033,7 @@ def create_sales_invoice(catering_order, additional_discount=None, auto_submit=0
 			"qty": flt(it.total_qty) or 1,
 			"rate": flt(it.rate),
 			"uom": it.uom,
-			"income_account": co.income_account,
+			"income_account": _default_income,
 			"cost_center": co.cost_center,
 		})
 
@@ -623,6 +1068,15 @@ def create_sales_invoice(catering_order, additional_discount=None, auto_submit=0
 		get_link_to_form("Sales Invoice", si.name),
 		"created and submitted" if cint(auto_submit) else "created"
 	), indicator="green", alert=True)
+	# Capture the snapshot of what we just billed.
+	# Use frappe.db.set_value (not co.db_update) — co is stale at this point
+	# and db_update would overwrite sales_invoice with None.
+	snapshot = _compute_order_snapshot(co)
+	frappe.db.set_value("Catering Order", catering_order, {
+		"last_billed_snapshot": snapshot,
+		"requires_rebill": 0,
+	}, update_modified=False)
+
 	return si.name
 
 
@@ -670,6 +1124,7 @@ def create_payment_entry(catering_order, paid_amount=None, mode_of_payment=None,
 						 auto_submit=0):
 	"""Create Payment Entry that reconciles against the Sales Invoice."""
 	co = frappe.get_doc("Catering Order", catering_order)
+	_check_approval_gate(co)
 	if not co.sales_invoice:
 		frappe.throw(_("Create the Sales Invoice first. Payments must reconcile against an Invoice."))
 
@@ -812,6 +1267,7 @@ def _get_total_paid(catering_order):
 def create_cost_sheet(catering_order):
 	"""Create Cost Sheet — auto-aggregates costs from ERPNext on save."""
 	co = frappe.get_doc("Catering Order", catering_order)
+	_check_approval_gate(co)
 	existing = frappe.db.get_value("Catering Cost Sheet",
 		{"catering_order": catering_order, "docstatus": ["!=", 2]}, "name")
 	if existing:
@@ -837,6 +1293,7 @@ def create_cost_sheet(catering_order):
 def create_production_plan(catering_order):
 	"""Create Production Plan. Requires invoice + minimum payment %."""
 	co = frappe.get_doc("Catering Order", catering_order)
+	_check_approval_gate(co)
 	settings = _get_settings()
 
 	if not co.sales_invoice:
@@ -875,10 +1332,9 @@ def create_production_plan(catering_order):
 	pp.planned_start_date = add_days(co.event_date, -2) if co.event_date else today()
 	pp.planned_end_date = co.event_date
 
-	if settings:
-		pp.source_warehouse = settings.default_source_warehouse
-		pp.wip_warehouse = settings.default_wip_warehouse
-		pp.fg_warehouse = settings.default_fg_warehouse
+	# Production Plan inherits warehouses through Catering Settings at Work Order creation time
+	# (no need to store on Production Plan itself)
+
 
 	# Build a set of categories that require production (from Catering Item Category master)
 	production_categories = set()
@@ -899,8 +1355,6 @@ def create_production_plan(catering_order):
 				"bom": it.bom,
 				"planned_qty": flt(it.total_qty),
 				"uom": it.uom,
-				"wip_warehouse": pp.wip_warehouse,
-				"fg_warehouse": pp.fg_warehouse,
 				"status": "Pending",
 			})
 			added_count += 1
@@ -914,8 +1368,6 @@ def create_production_plan(catering_order):
 				"bom": it.bom,
 				"planned_qty": flt(it.total_qty),
 				"uom": it.uom,
-				"wip_warehouse": pp.wip_warehouse,
-				"fg_warehouse": pp.fg_warehouse,
 				"status": "Pending",
 			})
 
@@ -932,59 +1384,6 @@ def create_production_plan(catering_order):
 	frappe.msgprint(_("Production Plan {0} created").format(
 		get_link_to_form("Catering Production Plan", pp.name)), indicator="green", alert=True)
 	return pp.name
-
-
-@frappe.whitelist()
-def create_material_request(catering_order):
-	"""Create Material Request - explodes BOMs to compute raw materials."""
-	co = frappe.get_doc("Catering Order", catering_order)
-	if co.material_request:
-		frappe.throw(_("Material Request {0} already exists.").format(co.material_request))
-
-	required_items = _calculate_raw_materials(co)
-	if not required_items:
-		for it in co.items:
-			if it.item_code:
-				required_items[it.item_code] = {
-					"qty": flt(it.total_qty),
-					"uom": it.uom,
-					"item_name": it.item_name,
-				}
-
-	if not required_items:
-		frappe.throw(_("No items found to create Material Request. Add items to the Catering Order first."))
-
-	mr = _create_doc_with_naming("Material Request")
-	mr.material_request_type = "Purchase"
-	mr.transaction_date = today()
-	# schedule_date must be >= transaction_date (today). Use later of preferred date or today+1.
-	preferred_schedule = add_days(co.event_date, -3) if co.event_date else add_days(today(), 3)
-	min_schedule = today()  # cannot be before transaction date
-	mr.schedule_date = max(getdate(preferred_schedule), getdate(min_schedule))
-	mr.company = co.company
-	mr.cost_center = co.cost_center
-	mr.project = co.project
-	mr.catering_order = co.name
-
-	for item_code, info in required_items.items():
-		mr.append("items", {
-			"item_code": item_code,
-			"item_name": info.get("item_name"),
-			"qty": info["qty"],
-			"uom": info.get("uom"),
-			"schedule_date": mr.schedule_date,
-			"cost_center": co.cost_center,
-			"project": co.project,
-		})
-
-	mr.flags.ignore_permissions = True
-	mr.insert()
-	frappe.db.set_value("Catering Order", catering_order, "material_request", mr.name)
-	_log_activity(co, "Document Created", f"Material Request {mr.name} created",
-		"Material Request", mr.name)
-	frappe.msgprint(_("Material Request {0} created").format(
-		get_link_to_form("Material Request", mr.name)), indicator="green", alert=True)
-	return mr.name
 
 
 def _calculate_raw_materials(co):
@@ -1016,6 +1415,7 @@ def _calculate_raw_materials(co):
 def create_delivery_plan(catering_order):
 	"""Create Delivery Plan for the event day."""
 	co = frappe.get_doc("Catering Order", catering_order)
+	_check_approval_gate(co)
 	if co.delivery_plan:
 		frappe.throw(_("Delivery Plan {0} already exists.").format(co.delivery_plan))
 
@@ -1054,6 +1454,7 @@ def create_delivery_plan(catering_order):
 def create_closing_sheet(catering_order):
 	"""Create Closing Sheet — pulls all financial data from linked docs."""
 	co = frappe.get_doc("Catering Order", catering_order)
+	_check_approval_gate(co)
 	existing = frappe.db.get_value("Catering Closing Sheet",
 		{"catering_order": catering_order, "docstatus": ["!=", 2]}, "name")
 	if existing:
@@ -1129,27 +1530,279 @@ def close_catering_order(catering_order):
 
 @frappe.whitelist()
 def get_profitability(catering_order):
-	"""Return profitability snapshot."""
-	co = frappe.get_doc("Catering Order", catering_order)
+	"""Live P&L for a Catering Order — queries source data directly. No cache.
 
-	revenue = flt(co.total_order_value)
-	invoiced = _safe_sum_with_catering_link("tabSales Invoice", "grand_total", catering_order)
+	Returns a dict with:
+	  - revenue, invoiced, paid, outstanding (sales-side numbers)
+	  - food_cost, beverage_cost, snacks_cost, labor_cost, delivery_cost,
+	    rental_cost, overhead_cost (cost categories)
+	  - wastage, emergency (informational only — already in overhead_cost)
+	  - total_cost, gross_profit, gross_margin_percent
+	  - currency
+
+	This is the ONE source of truth for P&L. All UI cards, the script report,
+	and the Closing Sheet read from this function.
+	"""
+	return _compute_catering_pnl(catering_order)
+
+
+
+def _wo_operating_cost_column():
+	"""Return whichever operating-cost column exists on tabWork Order.
+
+	ERPNext 15 uses `total_operating_cost`. Older versions had `operating_cost`.
+	Returns None if neither column exists.
+	"""
+	try:
+		rows = frappe.db.sql("""
+			SELECT column_name FROM information_schema.columns
+			WHERE table_schema = DATABASE() AND table_name = 'tabWork Order'
+			  AND column_name IN ('total_operating_cost', 'operating_cost')
+		""")
+		if not rows:
+			return None
+		names = {r[0] for r in rows}
+		if 'total_operating_cost' in names:
+			return 'total_operating_cost'
+		if 'operating_cost' in names:
+			return 'operating_cost'
+		return None
+	except Exception:
+		return None
+
+def _compute_catering_pnl(catering_order):
+	"""Live P&L computation — pure read, no writes anywhere."""
+	co = frappe.db.get_value("Catering Order", catering_order,
+		["name", "total_order_value", "currency", "company"], as_dict=True)
+	if not co:
+		return {}
+
+	company = co.company
+	currency = co.currency
+
+	# ─── Revenue side ────────────────────────────────────────────────────
+	# Total Sales Invoices (net of credit notes)
+	invoiced_row = frappe.db.sql("""
+		SELECT IFNULL(SUM(
+			CASE WHEN is_return = 1 THEN -ABS(grand_total) ELSE grand_total END
+		), 0) AS amt
+		FROM `tabSales Invoice`
+		WHERE catering_order = %s AND docstatus = 1
+	""", catering_order, as_dict=True)
+	invoiced = flt(invoiced_row[0].amt) if invoiced_row else 0
+
+	revenue = invoiced if invoiced else flt(co.total_order_value)
+
 	paid = _get_total_paid(catering_order)
-	cost = _safe_sum_with_catering_link("tabCatering Cost Sheet", "total_cost", catering_order)
-	wastage = _safe_sum_with_catering_link("tabCatering Wastage Entry", "total_wastage_value", catering_order)
-	emergency = _safe_sum_with_catering_link("tabCatering Emergency Expense", "total_amount", catering_order)
+	outstanding = max(0, invoiced - paid)
 
-	total_cost = cost + wastage + emergency
-	profit = revenue - total_cost
-	margin = (profit / revenue * 100) if revenue else 0
+	# ─── Cost side — bucket map from Settings ────────────────────────────
+	settings = None
+	try:
+		settings = frappe.get_single("Catering Settings")
+	except Exception:
+		pass
+
+	food_acct = settings.get("default_food_cogs_account") if settings else None
+	labor_acct = settings.get("default_labor_cost_account") if settings else None
+	delivery_acct = settings.get("default_delivery_cost_account") if settings else None
+
+	# Initialise cost buckets
+	food_cost = 0
+	beverage_cost = 0
+	snacks_cost = 0
+	labor_cost = 0
+	delivery_cost = 0
+	rental_cost = 0
+	overhead_cost = 0
+
+	# ─── Stock consumption from tagged Stock Entries ─────────────────────
+	# Bucketed by category via the Catering Order Item table
+	food_cost     += _stock_consumption(catering_order, ["Food", "Dessert"])
+	beverage_cost += _stock_consumption(catering_order, ["Beverage"])
+	snacks_cost   += _stock_consumption(catering_order, ["Snacks"])
+
+	# ─── Work Order labor cost → labor bucket ────────────────────────────
+	# ERPNext 15 uses `total_operating_cost`; older versions had `operating_cost`.
+	# Detect at runtime so we don't crash either way.
+	wo_col = _wo_operating_cost_column()
+	if wo_col:
+		wo_op_row = frappe.db.sql(f"""
+			SELECT IFNULL(SUM({wo_col}), 0) AS amt
+			FROM `tabWork Order`
+			WHERE catering_order = %s AND docstatus = 1
+		""", catering_order, as_dict=True)
+		labor_cost += flt(wo_op_row[0].amt) if wo_op_row else 0
+
+	# ─── Journal Entry expense debits — bucketed by account ──────────────
+	je_rows = _safe_table_query("tabJournal Entry", """
+		SELECT jea.account,
+		       IFNULL(SUM(jea.debit_in_account_currency), 0) AS amt
+		FROM `tabJournal Entry` je
+		INNER JOIN `tabJournal Entry Account` jea ON jea.parent = je.name
+		INNER JOIN `tabAccount` acc ON acc.name = jea.account
+		WHERE je.docstatus = 1
+		  AND je.catering_order = %s
+		  AND acc.root_type = 'Expense'
+		  AND jea.debit_in_account_currency > 0
+		GROUP BY jea.account
+	""", catering_order)
+
+	for r in (je_rows or []):
+		amt = flt(r.amt)
+		if food_acct and r.account == food_acct:
+			food_cost += amt
+		elif labor_acct and r.account == labor_acct:
+			labor_cost += amt
+		elif delivery_acct and r.account == delivery_acct:
+			delivery_cost += amt
+		else:
+			overhead_cost += amt
+
+	# ─── Purchase Invoices tagged with this order ────────────────────────
+	if delivery_acct:
+		pi_del = _safe_table_query("tabPurchase Invoice", """
+			SELECT IFNULL(SUM(pii.amount), 0) AS amt
+			FROM `tabPurchase Invoice` pi
+			INNER JOIN `tabPurchase Invoice Item` pii ON pii.parent = pi.name
+			WHERE pi.docstatus = 1
+			  AND pi.catering_order = %s
+			  AND pii.expense_account = %s
+		""", (catering_order, delivery_acct))
+		if pi_del:
+			delivery_cost += flt(pi_del[0].amt)
+
+	# Rental — keyword match on Purchase Invoice items
+	pi_rent = _safe_table_query("tabPurchase Invoice", """
+		SELECT IFNULL(SUM(pii.amount), 0) AS amt
+		FROM `tabPurchase Invoice` pi
+		INNER JOIN `tabPurchase Invoice Item` pii ON pii.parent = pi.name
+		WHERE pi.docstatus = 1
+		  AND pi.catering_order = %s
+		  AND (
+			LOWER(IFNULL(pii.item_name,'')) LIKE '%%rental%%' OR
+			LOWER(IFNULL(pii.item_name,'')) LIKE '%%rent%%' OR
+			LOWER(IFNULL(pii.item_name,'')) LIKE '%%equipment%%' OR
+			LOWER(IFNULL(pii.description,'')) LIKE '%%rental%%' OR
+			LOWER(IFNULL(pii.description,'')) LIKE '%%hire%%'
+		  )
+	""", catering_order)
+	if pi_rent:
+		rental_cost += flt(pi_rent[0].amt)
+
+	# ─── Wastage & Emergency → overhead ─────────────────────────────────
+	wastage = _safe_sum_with_catering_link("tabCatering Wastage Entry",
+		"total_wastage_value", catering_order)
+	emergency = _safe_sum_with_catering_link("tabCatering Emergency Expense",
+		"total_amount", catering_order)
+	overhead_cost += flt(wastage) + flt(emergency)
+
+	# ─── Totals ──────────────────────────────────────────────────────────
+	total_cost = (flt(food_cost) + flt(beverage_cost) + flt(snacks_cost) +
+	              flt(labor_cost) + flt(delivery_cost) + flt(rental_cost) +
+	              flt(overhead_cost))
+	gross_profit = flt(revenue) - flt(total_cost)
+	margin = (gross_profit / revenue * 100) if revenue else 0
 
 	return {
-		"revenue": revenue, "invoiced": invoiced, "paid": paid,
-		"outstanding": invoiced - paid, "cost": cost, "wastage": wastage,
-		"emergency": emergency, "total_cost": total_cost,
-		"gross_profit": profit, "gross_margin_percent": round(margin, 2),
-		"currency": co.currency,
+		"revenue":        flt(revenue),
+		"invoiced":       flt(invoiced),
+		"paid":           flt(paid),
+		"outstanding":    flt(outstanding),
+		"food_cost":      flt(food_cost),
+		"beverage_cost":  flt(beverage_cost),
+		"snacks_cost":    flt(snacks_cost),
+		"labor_cost":     flt(labor_cost),
+		"delivery_cost":  flt(delivery_cost),
+		"rental_cost":    flt(rental_cost),
+		"overhead_cost":  flt(overhead_cost),
+		"wastage":        flt(wastage),     # informational, already in overhead
+		"emergency":      flt(emergency),   # informational, already in overhead
+		"cost":           flt(total_cost),  # alias kept for legacy JS card
+		"total_cost":     flt(total_cost),
+		"gross_profit":   flt(gross_profit),
+		"gross_margin_percent": round(margin, 2),
+		"currency":       currency,
 	}
+
+
+def _stock_consumption(catering_order, categories):
+	"""Sum raw-material consumption from Stock Entries tagged with this
+	Catering Order — ONLY from purpose='Manufacture' Stock Entries.
+
+	Why Manufacture only:
+	  Material Issue / Material Transfer for Manufacture / Repack may also
+	  consume stock, but they represent intermediate steps that are typically
+		captured downstream by Manufacture as the consumed materials are recorded.
+	  Limiting to Manufacture avoids double-counting.
+
+	Bucketing logic (with fallbacks):
+	  1. If the consumed item is itself in Catering Order Items, use its category.
+	  2. Else look up the Work Order's production_item in Catering Order Items.
+	  3. Else default to "Food" (catch-all so consumption is never lost).
+	"""
+	try:
+		cat_map = {}
+		for r in frappe.db.sql("""
+			SELECT item_code, category FROM `tabCatering Order Item`
+			WHERE parent = %s AND item_code IS NOT NULL
+		""", catering_order, as_dict=True):
+			cat_map[r.item_code] = r.category or "Food"
+
+		rows = frappe.db.sql("""
+			SELECT se.work_order, sle.item_code AS sle_item,
+			       ABS(sle.stock_value_difference) AS amt
+			FROM `tabStock Ledger Entry` sle
+			INNER JOIN `tabStock Entry` se ON se.name = sle.voucher_no
+			WHERE sle.voucher_type = 'Stock Entry'
+			  AND se.docstatus = 1
+			  AND se.catering_order = %s
+			  AND se.purpose = 'Manufacture'
+			  AND sle.actual_qty < 0
+		""", catering_order, as_dict=True)
+
+		wo_cache = {}
+		total = 0
+		for row in rows:
+			cat = None
+			if row.sle_item in cat_map:
+				cat = cat_map[row.sle_item]
+			elif row.work_order:
+				if row.work_order not in wo_cache:
+					try:
+						prod = frappe.db.get_value("Work Order",
+							row.work_order, "production_item")
+						wo_cache[row.work_order] = cat_map.get(prod) or "Food"
+					except Exception:
+						wo_cache[row.work_order] = "Food"
+				cat = wo_cache[row.work_order]
+			if not cat:
+				cat = "Food"
+
+			if cat in categories:
+				total += flt(row.amt)
+		return flt(total)
+	except Exception:
+		import traceback
+		frappe.log_error(traceback.format_exc()[:400], "Stock Consumption Query")
+		return 0
+
+
+
+def _safe_table_query(table, sql, args):
+	"""Run a query that depends on the catering_order column existing.
+	Returns [] if the column doesn't exist."""
+	try:
+		check = frappe.db.sql("""
+			SELECT COUNT(*) FROM information_schema.columns
+			WHERE table_schema = DATABASE() AND table_name = %s
+			  AND column_name = 'catering_order'
+		""", table)
+		if not check or check[0][0] == 0:
+			return []
+		return frappe.db.sql(sql, args, as_dict=True)
+	except Exception:
+		return []
 
 
 # ════════════════════════════════════════════════════════════════════════════
@@ -1170,3 +1823,785 @@ def _apply_tax_template(target_doc, template_name, template_doctype):
 			})
 	except Exception:
 		pass
+
+
+@frappe.whitelist()
+def update_sales_invoice(catering_order):
+	"""Sync the Sales Invoice with current Catering Order contents.
+
+	Behavior depends on Sales Invoice docstatus:
+	- DRAFT (0): edit the SI items directly to match the current order.
+	- SUBMITTED (1): create a SUPPLEMENTARY Sales Invoice for the DIFFERENCE only.
+	  → If items were added or quantities increased → new charge invoice for the extra.
+	  → If items were removed or quantities decreased → a credit note (return) for the reduction.
+
+	This approach preserves Sales Order, Work Orders, payments, and audit trail. Nothing is cancelled.
+	"""
+	co = frappe.get_doc("Catering Order", catering_order)
+	if not co.sales_invoice:
+		frappe.throw(_("This order has no Sales Invoice yet. Create one first."))
+
+	si = frappe.get_doc("Sales Invoice", co.sales_invoice)
+
+	# ── Case A: SI is still DRAFT — edit in place ─────────────────────────────
+	if si.docstatus == 0:
+		si.set("items", [])
+		for it in co.items:
+			si.append("items", {
+				"item_code": it.item_code,
+				"item_name": it.item_name,
+				"qty": flt(it.total_qty) or 1,
+				"rate": flt(it.rate),
+				"uom": it.uom,
+				"income_account": co.income_account or _settings_account("default_cogs_account"),
+				"cost_center": co.cost_center,
+			})
+		si.flags.ignore_permissions = True
+		si.save()
+		frappe.db.set_value("Catering Order", co.name, {
+			"last_billed_snapshot": _compute_order_snapshot(co),
+			"requires_rebill": 0,
+		}, update_modified=False)
+		_log_activity(co, "Document Submitted", f"Sales Invoice {si.name} updated in place (draft)",
+			"Sales Invoice", si.name)
+		frappe.msgprint(_("Sales Invoice {0} updated in-place with current order contents.").format(
+			get_link_to_form("Sales Invoice", si.name)), indicator="green", alert=True)
+		return {"action": "updated_draft", "sales_invoice": si.name}
+
+	# ── Case B: SI is SUBMITTED — compute the DIFFERENCE and post a supplementary doc ──
+	# Build a map of currently-billed quantities (sum across all SI lines per item_code)
+	billed_map = {}  # item_code -> {qty, rate}
+	for sii in si.items:
+		code = sii.item_code
+		if code in billed_map:
+			billed_map[code]["qty"] += flt(sii.qty)
+		else:
+			billed_map[code] = {"qty": flt(sii.qty), "rate": flt(sii.rate),
+			                    "item_name": sii.item_name, "uom": sii.uom}
+
+	# Also include supplementary invoices that already exist for this order
+	prior_supps = frappe.db.sql("""
+		SELECT sii.item_code, sii.qty
+		FROM `tabSales Invoice Item` sii
+		INNER JOIN `tabSales Invoice` si ON si.name = sii.parent
+		WHERE si.catering_order = %s
+		  AND si.name != %s
+		  AND si.docstatus = 1
+	""", (catering_order, si.name), as_dict=True)
+	for row in prior_supps:
+		code = row.item_code
+		if code in billed_map:
+			billed_map[code]["qty"] += flt(row.qty)
+
+	# Build current expected quantities
+	current_map = {}
+	for it in co.items:
+		code = it.item_code
+		if code in current_map:
+			current_map[code]["qty"] += flt(it.total_qty)
+		else:
+			current_map[code] = {
+				"qty": flt(it.total_qty),
+				"rate": flt(it.rate),
+				"item_name": it.item_name,
+				"uom": it.uom,
+			}
+
+	# Compute the DIFFERENCE per item
+	diffs = []  # list of {item_code, qty_diff (signed), rate, item_name, uom}
+	all_codes = set(billed_map.keys()) | set(current_map.keys())
+	for code in all_codes:
+		billed_qty = flt(billed_map.get(code, {}).get("qty", 0))
+		current_qty = flt(current_map.get(code, {}).get("qty", 0))
+		diff = current_qty - billed_qty
+		if abs(diff) < 0.001:
+			continue
+		rate = current_map.get(code, {}).get("rate") or billed_map.get(code, {}).get("rate", 0)
+		item_name = current_map.get(code, {}).get("item_name") or billed_map.get(code, {}).get("item_name")
+		uom = current_map.get(code, {}).get("uom") or billed_map.get(code, {}).get("uom")
+		diffs.append({"item_code": code, "qty_diff": diff, "rate": rate,
+		              "item_name": item_name, "uom": uom})
+
+	if not diffs:
+		# Nothing has changed quantity-wise — just refresh snapshot
+		frappe.db.set_value("Catering Order", co.name, {
+			"last_billed_snapshot": _compute_order_snapshot(co),
+			"requires_rebill": 0,
+		}, update_modified=False)
+		frappe.msgprint(_("No billing changes detected. Order is already in sync with the Invoice."),
+			indicator="blue", alert=True)
+		return {"action": "no_change", "sales_invoice": si.name}
+
+	# Split into positive (additional charge) and negative (credit note) lists
+	positive_diffs = [d for d in diffs if d["qty_diff"] > 0]
+	negative_diffs = [d for d in diffs if d["qty_diff"] < 0]
+
+	new_si_names = []
+
+	# (a) Create supplementary invoice for additions
+	if positive_diffs:
+		sup = _create_doc_with_naming("Sales Invoice")
+		sup.customer = co.customer
+		sup.posting_date = today()
+		sup.due_date = add_days(today(), 30)
+		sup.company = co.company
+		sup.cost_center = co.cost_center
+		sup.project = co.project
+		sup.catering_order = co.name
+		sup.currency = co.currency
+		sup.conversion_rate = flt(co.conversion_rate) or 1
+		sup.selling_price_list = co.price_list
+		sup.remarks = f"Supplementary invoice (additions) for Catering Order {co.name}"
+
+		for d in positive_diffs:
+			sup.append("items", {
+				"item_code": d["item_code"],
+				"item_name": d["item_name"],
+				"qty": d["qty_diff"],
+				"rate": d["rate"],
+				"uom": d["uom"],
+				"income_account": co.income_account or _settings_account("default_cogs_account"),
+				"cost_center": co.cost_center,
+			})
+
+		if co.tax_template:
+			sup.taxes_and_charges = co.tax_template
+			_apply_tax_template(sup, co.tax_template, "Sales Taxes and Charges Template")
+
+		sup.flags.ignore_permissions = True
+		sup.insert()
+		try:
+			sup.submit()
+		except Exception as e:
+			frappe.msgprint(_("Supplementary SI {0} created (Draft). Submit failed: {1}").format(
+				sup.name, str(e)[:200]), indicator="orange")
+		new_si_names.append(("addition", sup.name))
+
+	# (b) Create credit note (Return SI) for removals
+	if negative_diffs:
+		cn = _create_doc_with_naming("Sales Invoice")
+		cn.is_return = 1
+		cn.return_against = si.name
+		cn.customer = co.customer
+		cn.posting_date = today()
+		cn.company = co.company
+		cn.cost_center = co.cost_center
+		cn.project = co.project
+		cn.catering_order = co.name
+		cn.currency = co.currency
+		cn.conversion_rate = flt(co.conversion_rate) or 1
+		cn.selling_price_list = co.price_list
+		cn.remarks = f"Credit note (reductions) for Catering Order {co.name}"
+
+		for d in negative_diffs:
+			# Return SI uses NEGATIVE qty
+			cn.append("items", {
+				"item_code": d["item_code"],
+				"item_name": d["item_name"],
+				"qty": d["qty_diff"],  # already negative
+				"rate": d["rate"],
+				"uom": d["uom"],
+				"income_account": co.income_account or _settings_account("default_cogs_account"),
+				"cost_center": co.cost_center,
+			})
+
+		cn.flags.ignore_permissions = True
+		cn.insert()
+		try:
+			cn.submit()
+		except Exception as e:
+			frappe.msgprint(_("Credit Note {0} created (Draft). Submit failed: {1}").format(
+				cn.name, str(e)[:200]), indicator="orange")
+		new_si_names.append(("credit_note", cn.name))
+
+	# Update snapshot
+	frappe.db.set_value("Catering Order", co.name, {
+		"last_billed_snapshot": _compute_order_snapshot(co),
+		"requires_rebill": 0,
+	}, update_modified=False)
+
+	for kind, name in new_si_names:
+		_log_activity(co, "Document Created",
+			f"{'Supplementary SI' if kind == 'addition' else 'Credit Note'} {name} for order changes",
+			"Sales Invoice", name)
+
+	msg_parts = []
+	for kind, name in new_si_names:
+		label = "Supplementary Invoice" if kind == "addition" else "Credit Note"
+		msg_parts.append(f"{label}: {get_link_to_form('Sales Invoice', name)}")
+	frappe.msgprint(_("Created: {0}").format(" | ".join(msg_parts)), indicator="green", alert=True)
+
+	return {"action": "supplementary", "documents": [n for _, n in new_si_names]}
+
+
+def _settings_account(key):
+	"""Fetch an account fieldname from Catering Settings safely."""
+	try:
+		return frappe.db.get_single_value("Catering Settings", key)
+	except Exception:
+		return None
+
+
+@frappe.whitelist()
+def create_delivery_note_from_plan(delivery_plan):
+	"""Create a Delivery Note from a Catering Delivery Plan.
+
+	Behavior:
+	- If a Sales Invoice exists for the order, the DN references it via against_sales_invoice
+	  (each DN item links to the corresponding SI item so ERPNext knows it's already billed).
+	- For items already fully billed/delivered, skip them.
+	- For items not yet delivered or partial, only deliver the remaining qty.
+	- DN status is auto-set by ERPNext based on Sales Invoice status.
+	"""
+	dp = frappe.get_doc("Catering Delivery Plan", delivery_plan)
+	co = frappe.get_doc("Catering Order", dp.catering_order) if dp.catering_order else None
+
+	settings = _get_settings()
+
+	dn = _create_doc_with_naming("Delivery Note")
+	dn.customer = co.customer if co else None
+	dn.posting_date = today()
+	dn.posting_time = dp.delivery_time or "12:00:00"
+	dn.company = dp.company or (co.company if co else None)
+	dn.cost_center = co.cost_center if co else None
+	dn.project = co.project if co else None
+	dn.catering_order = dp.catering_order
+
+	dn.currency = (co.currency if co else None) or "USD"
+	dn.conversion_rate = 1.0
+
+	if dp.delivery_address:
+		dn.shipping_address = dp.delivery_address
+	if dp.contact_phone:
+		dn.contact_mobile = dp.contact_phone
+
+	from_wh = (settings.default_fg_warehouse if settings else None)
+	if not from_wh:
+		from_wh = frappe.db.get_value("Item Default", {"parent": dp.delivery_items[0].item_code}, "default_warehouse") \
+			if dp.delivery_items else None
+
+	# Load the Sales Invoice items if available — we link DN items to SI items so the DN
+	# does NOT re-bill what's already invoiced. ERPNext handles this via against_sales_invoice + si_detail.
+	si_items_by_code = {}
+	si_name = None
+	if co and co.sales_invoice:
+		try:
+			si = frappe.get_doc("Sales Invoice", co.sales_invoice)
+			if si.docstatus == 1:
+				si_name = si.name
+				for sii in si.items:
+					# Track remaining-to-deliver: invoiced qty - already-delivered qty
+					already_delivered = flt(sii.delivered_qty or 0)
+					remaining = flt(sii.qty) - already_delivered
+					si_items_by_code[sii.item_code] = {
+						"si_item_name": sii.name,
+						"si_qty": flt(sii.qty),
+						"delivered_qty": already_delivered,
+						"remaining": remaining,
+						"rate": flt(sii.rate),
+					}
+		except Exception:
+			pass
+
+	# Build DN items — skip items already fully delivered/billed
+	items_added = 0
+	items_skipped = []
+	for item in (dp.delivery_items or []):
+		item_code = item.item_code
+		qty_to_deliver = flt(item.qty)
+
+		# Match against SI line if exists
+		if item_code in si_items_by_code:
+			si_info = si_items_by_code[item_code]
+			if si_info["remaining"] <= 0:
+				# Already fully delivered/billed
+				items_skipped.append(f"{item_code} (already delivered)")
+				continue
+			# Cap to remaining qty
+			qty_to_deliver = min(qty_to_deliver, si_info["remaining"])
+
+			dn.append("items", {
+				"item_code": item_code,
+				"item_name": item.item_name,
+				"qty": qty_to_deliver,
+				"uom": item.uom,
+				"warehouse": from_wh,
+				"cost_center": co.cost_center if co else None,
+				"rate": si_info["rate"],
+				"against_sales_invoice": si_name,
+				"si_detail": si_info["si_item_name"],
+				"sales_invoice_item": si_info["si_item_name"],
+			})
+			items_added += 1
+		else:
+			# Item not in Sales Invoice — deliver as-is (will be billed later or marked unbilled)
+			dn.append("items", {
+				"item_code": item_code,
+				"item_name": item.item_name,
+				"qty": qty_to_deliver,
+				"uom": item.uom,
+				"warehouse": from_wh,
+				"cost_center": co.cost_center if co else None,
+			})
+			items_added += 1
+
+	if items_added == 0:
+		msg = "All items already delivered/billed."
+		if items_skipped:
+			msg += " Skipped: " + ", ".join(items_skipped[:5])
+		frappe.throw(_(msg))
+
+	dn.flags.ignore_permissions = True
+	dn.insert()
+
+	# Link back from Delivery Plan and update its status
+	dp_status = "Partially Delivered" if items_skipped else "Delivered"
+	frappe.db.set_value("Catering Delivery Plan", delivery_plan, {
+		"delivery_note": dn.name,
+		"status": dp_status,
+	}, update_modified=False)
+
+	if co:
+		note = f"Delivery Note {dn.name} created from Delivery Plan {delivery_plan}"
+		if items_skipped:
+			note += f" (skipped {len(items_skipped)} already-billed items)"
+		_log_activity(co, "Document Created", note, "Delivery Note", dn.name)
+
+	return dn.name
+
+
+@frappe.whitelist()
+def create_work_orders_from_plan(production_plan):
+	"""Create one Work Order per Production Plan item.
+
+	WIP and FG warehouses are inherited from Catering Settings (NOT manually).
+	Each Work Order's catering_order field is set for cost-sheet attribution.
+	"""
+	pp = frappe.get_doc("Catering Production Plan", production_plan)
+	if pp.docstatus != 1:
+		frappe.throw(_("Production Plan must be submitted before creating Work Orders."))
+
+	settings = _get_settings()
+	if not settings:
+		frappe.throw(_("Catering Settings not configured. Cannot determine warehouses."))
+
+	# Production Plan doctype has no warehouse fields - use Catering Settings directly
+	wip = settings.default_wip_warehouse
+	fg = settings.default_fg_warehouse
+	source = settings.default_source_warehouse
+
+	if not wip or not fg:
+		frappe.throw(_("WIP and FG warehouses must be configured in Catering Settings."))
+
+	created = []
+	for item in (pp.items or []):
+		if item.work_order:
+			continue  # Already has one
+		if not item.bom:
+			continue  # Can't create WO without BOM
+
+		try:
+			wo = frappe.new_doc("Work Order")
+			wo.production_item = item.item_code
+			wo.bom_no = item.bom
+			wo.qty = flt(item.planned_qty)
+			wo.company = pp.company
+			wo.wip_warehouse = wip
+			wo.fg_warehouse = fg
+			wo.source_warehouse = source
+			wo.planned_start_date = pp.planned_start_date or today()
+			wo.expected_delivery_date = pp.planned_end_date or today()
+			wo.catering_order = pp.catering_order
+			wo.use_multi_level_bom = 0
+
+			wo.flags.ignore_permissions = True
+			wo.insert()
+
+			# Link back to Production Plan Item
+			frappe.db.set_value("Catering Production Plan Item", item.name, "work_order", wo.name)
+			created.append(wo.name)
+		except Exception as e:
+			frappe.log_error(f"Work Order creation failed for {item.item_code}: {str(e)[:200]}",
+				"Production Plan Work Order")
+
+	frappe.db.commit()
+	return created
+
+
+
+def _check_approval_gate(co):
+	"""Raise if order is not submitted (docstatus < 1) or in terminal state."""
+	if co.docstatus != 1:
+		frappe.throw(_(
+			"Cannot proceed: this Catering Order is in Draft. "
+			"Click Submit at the top right to lock the order before creating any documents."
+		), title=_("Order Not Submitted"))
+	if co.status in ("Closed", "Void", "Cancelled"):
+		frappe.throw(_("Cannot create new documents on a {0} Catering Order.").format(co.status),
+			title=_("Order " + co.status))
+
+
+
+MANAGER_ROLES = ("Catering Manager", "Catering Management",
+                 "System Manager", "Administrator")
+
+
+def _is_manager():
+	return any(r in frappe.get_roles() for r in MANAGER_ROLES)
+
+
+@frappe.whitelist()
+def create_quick_expense(catering_order, expense_account, amount, expense_date,
+                          entry_type="Cash", payee="", paid_from_account=None, supplier=None,
+                          memo=None, reference_no=None):
+	"""Create a Journal Entry for a quick expense linked to this Catering Order / Project.
+
+	Two entry types:
+	  - 'Cash'  : Dr Expense Account, Cr Bank/Cash (paid_from_account required)
+	  - 'Bill'  : Dr Expense Account, Cr Accounts Payable (party=Supplier required;
+	              creates an open payable that can be settled later via Payment Entry)
+	"""
+	co = frappe.get_doc("Catering Order", catering_order)
+	if co.docstatus != 1:
+		frappe.throw(_("Catering Order must be submitted before recording expenses."))
+
+	amount = flt(amount)
+	if amount <= 0:
+		frappe.throw(_("Amount must be greater than zero."))
+	if not expense_account:
+		frappe.throw(_("Expense Account is required."))
+
+	entry_type = (entry_type or "Cash").strip()
+
+	# Determine the credit (offset) account
+	credit_account = None
+	party_type = None
+	party = None
+
+	if entry_type == "Bill":
+		# Payable to a Supplier
+		if not supplier:
+			frappe.throw(_("Supplier is required for Bill-type entries."))
+		if not frappe.db.exists("Supplier", supplier):
+			frappe.throw(_("Supplier {0} does not exist.").format(supplier))
+		# Get payable account
+		credit_account = frappe.db.get_value("Company", co.company, "default_payable_account")
+		if not credit_account:
+			frappe.throw(_("Set the Default Payable Account on Company {0}").format(co.company))
+		party_type = "Supplier"
+		party = supplier
+		payee = supplier  # use supplier name as the payee
+	else:
+		# Cash / Bank entry
+		if not paid_from_account:
+			frappe.throw(_("Pay From Account is required for Cash-type entries."))
+		if not payee:
+			frappe.throw(_("Payee is required for Cash-type entries."))
+		credit_account = paid_from_account
+		if frappe.db.exists("Supplier", payee):
+			party_type = "Supplier"
+			party = payee
+
+	je = frappe.new_doc("Journal Entry")
+	if entry_type == "Bill":
+		je.voucher_type = "Journal Entry"
+	else:
+		je.voucher_type = "Bank Entry" if "bank" in (credit_account or "").lower() else "Cash Entry"
+	je.posting_date = expense_date or today()
+	je.company = co.company
+	je.cheque_no = reference_no or f"QE-{co.name}"
+	je.cheque_date = expense_date or today()
+	je.user_remark = f"Quick Expense ({entry_type}) for {co.name}: {memo or payee}"
+	je.naming_series = _pick_naming_series_safe("Journal Entry")
+
+	# Debit the expense account
+	debit_row = {
+		"account": expense_account,
+		"debit_in_account_currency": amount,
+		"cost_center": co.cost_center,
+		"project": co.project,
+		"user_remark": memo or f"Expense - {payee}",
+	}
+	je.append("accounts", debit_row)
+
+	# Credit the offset account (Bank/Cash OR Payable with party)
+	credit_row = {
+		"account": credit_account,
+		"credit_in_account_currency": amount,
+		"cost_center": co.cost_center,
+		"project": co.project,
+		"user_remark": f"{'Payable to' if entry_type == 'Bill' else 'Paid'} {payee}",
+	}
+	if party_type and party:
+		credit_row["party_type"] = party_type
+		credit_row["party"] = party
+	je.append("accounts", credit_row)
+
+	je.flags.ignore_permissions = True
+	je.insert()
+	je.submit()
+
+	frappe.db.set_value("Journal Entry", je.name, "catering_order", catering_order, update_modified=False)
+	_log_activity(co, "Document Created",
+		f"Quick Expense ({entry_type}) JE {je.name} for {payee}: {amount}",
+		"Journal Entry", je.name)
+
+	# Refresh the cost sheet immediately
+	try:
+		from dagaar_catering.catering_management.controllers.catering_cost_sheet import refresh_cost_sheet
+		refresh_cost_sheet(catering_order)
+	except Exception:
+		pass
+
+	return {
+		"journal_entry": je.name,
+		"amount": amount,
+		"payee": payee,
+		"entry_type": entry_type,
+	}
+
+
+@frappe.whitelist()
+def get_quick_expense_defaults(catering_order):
+	"""Return defaults for the Quick Expense popup."""
+	co = frappe.get_doc("Catering Order", catering_order)
+	settings = _get_settings() if "_get_settings" in globals() else None
+	try:
+		if not settings:
+			settings = frappe.get_single("Catering Settings")
+	except Exception:
+		settings = None
+
+	default_bank = None
+	if settings:
+		default_bank = settings.get("default_bank_account") or settings.get("default_cash_account")
+	if not default_bank:
+		default_bank = frappe.db.get_value("Company", co.company, "default_bank_account") or \
+			frappe.db.get_value("Company", co.company, "default_cash_account")
+
+	return {
+		"company": co.company,
+		"project": co.project,
+		"currency": co.currency,
+		"default_paid_from": default_bank,
+		"default_date": today(),
+	}
+
+
+def _pick_naming_series_safe(doctype):
+	try:
+		meta = frappe.get_meta(doctype)
+		field = meta.get_field("naming_series")
+		if field and field.options:
+			opts = [x.strip() for x in field.options.split("\n") if x.strip()]
+			if opts:
+				return opts[0]
+	except Exception:
+		pass
+	return "ACC-JV-.YYYY.-" if doctype == "Journal Entry" else ""
+
+@frappe.whitelist()
+def bulk_delete_catering_orders(names):
+	"""Force-delete Catering Orders along with all linked documents.
+
+	Called from the list view bulk action. Cancels all linked docs first (via on_cancel
+	cascade), then forcibly deletes the Catering Orders.
+
+	Managers only.
+	"""
+	if not _is_manager():
+		frappe.throw(_("Only Catering Manager can bulk-delete orders."), frappe.PermissionError)
+
+	if isinstance(names, str):
+		import json as _json
+		try:
+			names = _json.loads(names)
+		except Exception:
+			names = [names]
+
+	deleted, failed = [], []
+	for name in names:
+		try:
+			co = frappe.get_doc("Catering Order", name)
+			# Trigger cancel cascade if submitted
+			if co.docstatus == 1:
+				co.flags.ignore_permissions = True
+				co.flags.ignore_links = True
+				co.cancel()
+			# Now delete
+			frappe.delete_doc("Catering Order", name, ignore_permissions=True, force=1,
+				ignore_on_trash=True)
+			deleted.append(name)
+		except Exception as e:
+			failed.append({"name": name, "error": str(e)[:200]})
+			frappe.log_error(f"bulk_delete_catering_orders failed for {name}: {str(e)[:300]}",
+				"Catering Bulk Delete")
+
+	frappe.db.commit()
+	return {"deleted": deleted, "failed": failed}
+
+@frappe.whitelist()
+def create_additional_service_invoice(catering_order, service_item, qty, rate, description=""):
+	"""Create a SEPARATE Sales Invoice for an additional service charge.
+
+	This is independent of the main order's SI — used for late-night surcharges,
+	setup fees, extra-trip charges, etc. The service item must belong to item_group='Service'.
+
+	The new SI is tagged with this catering_order so it shows up in revenue
+	and profitability for the same order.
+	"""
+	co = frappe.get_doc("Catering Order", catering_order)
+	if co.docstatus != 1:
+		frappe.throw(_("Catering Order must be submitted before adding service charges."))
+	if co.status in ("Closed", "Void", "Cancelled"):
+		frappe.throw(_("Cannot add services to a {0} order.").format(co.status))
+
+	# Validate the service item
+	if not service_item:
+		frappe.throw(_("Service Item is required."))
+	item_group = frappe.db.get_value("Item", service_item, "item_group")
+	if item_group != "Service":
+		frappe.throw(_("Selected Item must belong to the 'Service' item group. Current group: {0}").format(item_group))
+
+	qty = flt(qty)
+	rate = flt(rate)
+	if qty <= 0 or rate <= 0:
+		frappe.throw(_("Quantity and Rate must be greater than zero."))
+
+	# Create the Sales Invoice
+	si = _create_doc_with_naming("Sales Invoice")
+	si.customer = co.customer
+	si.posting_date = today()
+	si.due_date = add_days(today(), 30)
+	si.company = co.company
+	si.cost_center = co.cost_center
+	si.project = co.project
+	si.catering_order = co.name
+	si.currency = co.currency
+	si.conversion_rate = flt(co.conversion_rate) or 1
+	si.selling_price_list = co.price_list
+	si.remarks = f"Additional service for Catering Order {co.name}: {description or service_item}"
+
+	income_account = co.income_account or _settings_account("default_cogs_account")
+	item_name = frappe.db.get_value("Item", service_item, "item_name") or service_item
+	uom = frappe.db.get_value("Item", service_item, "stock_uom") or "Unit"
+
+	si.append("items", {
+		"item_code": service_item,
+		"item_name": item_name,
+		"qty": qty,
+		"rate": rate,
+		"uom": uom,
+		"income_account": income_account,
+		"cost_center": co.cost_center,
+		"description": description or item_name,
+	})
+
+	si.flags.ignore_permissions = True
+	si.insert()
+	try:
+		si.submit()
+	except Exception as e:
+		frappe.msgprint(_("Service Invoice {0} created (Draft). Submit failed: {1}").format(
+			si.name, str(e)[:200]), indicator="orange")
+
+	_log_activity(co, "Document Created",
+		f"Additional Service Invoice {si.name}: {item_name} × {qty} @ {rate}",
+		"Sales Invoice", si.name)
+
+	return si.name
+
+
+def _settings_account(key):
+	try:
+		return frappe.db.get_single_value("Catering Settings", key)
+	except Exception:
+		return None
+
+@frappe.whitelist()
+def void_catering_order(catering_order, reason=None):
+	"""Void a Catering Order before payment / production. Manager only."""
+	if not _is_manager():
+		frappe.throw(_("Only Catering Manager can void orders."), frappe.PermissionError)
+	co = frappe.get_doc("Catering Order", catering_order)
+	if co.status in ("Closed", "Cancelled", "Void"):
+		frappe.throw(_("Order is already {0}.").format(co.status))
+	if co.production_plan:
+		frappe.throw(_("Cannot void: Production Plan exists. Use Cancel instead."))
+	pay_count = frappe.db.count("Payment Entry",
+		{"catering_order": catering_order, "docstatus": 1})
+	if pay_count:
+		frappe.throw(_("Cannot void: {0} Payment Entry(ies) already exist. "
+		              "Use Cancel for this case.").format(pay_count))
+	frappe.db.set_value("Catering Order", catering_order, {"status": "Void"},
+		update_modified=True)
+	_log_activity(co, "Order Voided",
+		f"Voided by {frappe.session.user}" + (f" - {reason}" if reason else ""))
+	frappe.msgprint(_("Catering Order voided."), indicator="orange", alert=True)
+	return "Void"
+
+
+
+def auto_void_stale_quotations():
+	"""Scheduled (daily) — void any Catering Order whose quotation/SO is older
+	than 30 days and has not been confirmed (no Sales Invoice created yet).
+
+	Criteria for auto-void:
+	  - docstatus = 1 (submitted)
+	  - status NOT IN ('Closed', 'Cancelled', 'Void', 'Invoiced', 'Paid',
+	                   'In Production', 'Delivered', 'Ready to Deliver')
+	  - creation date > 30 days ago
+	  - no Sales Invoice tagged
+	  - no Production Plan tagged
+	"""
+	stale = frappe.db.sql("""
+		SELECT name FROM `tabCatering Order`
+		WHERE docstatus = 1
+		  AND status NOT IN ('Closed', 'Cancelled', 'Void', 'Invoiced', 'Paid',
+		                     'In Production', 'Delivered', 'Ready to Deliver',
+		                     'Ready for Delivery', 'Deposit Received')
+		  AND DATEDIFF(NOW(), creation) > 30
+		  AND (sales_invoice IS NULL OR sales_invoice = '')
+		  AND (production_plan IS NULL OR production_plan = '')
+	""", as_dict=True)
+
+	count = 0
+	for row in stale:
+		try:
+			frappe.db.set_value("Catering Order", row.name, {
+				"status": "Void",
+			}, update_modified=False)
+			frappe.get_doc({
+				"doctype": "Catering Activity Log",
+				"catering_order": row.name,
+				"action": "Status Change",
+				"details": "Auto-voided: 30+ days without confirmation",
+				"action_by": "Administrator",
+			}).insert(ignore_permissions=True)
+			count += 1
+		except Exception as e:
+			frappe.log_error(f"Auto-void failed for {row.name}: {str(e)[:200]}",
+				"Catering Auto-Void")
+
+	if count:
+		frappe.db.commit()
+		frappe.logger().info(f"Catering Auto-Void: voided {count} stale orders")
+	return count
+
+@frappe.whitelist()
+def get_items_for_package(menu_package):
+	"""Return the items defined on a Catering Menu Package master.
+
+	Used by the JS guest_count handler to identify which items in the
+	order's items table came from THIS package (by item_code match).
+	"""
+	try:
+		rows = frappe.db.sql("""
+			SELECT item_code, qty_per_guest
+			FROM `tabCatering Menu Package Item`
+			WHERE parent = %s
+		""", menu_package, as_dict=True)
+		return rows
+	except Exception:
+		return []
+

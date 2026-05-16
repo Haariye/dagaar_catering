@@ -35,7 +35,9 @@
   "margin_variance",
   "notes_sb",
   "notes",
-  "reviewed_by"
+  "reviewed_by",
+  "journal_entry",
+  "bypass_outstanding"
  ],
  "fields": [
   {
@@ -99,7 +101,8 @@
    "in_filter": 0,
    "read_only": 0,
    "hidden": 0,
-   "options": "Company"
+   "options": "Company",
+   "fetch_from": "catering_order.company"
   },
   {
    "fieldname": "status",
@@ -344,6 +347,22 @@
    "read_only": 0,
    "hidden": 0,
    "options": "User"
+  },
+  {
+   "fieldname": "journal_entry",
+   "label": "Posted Journal Entry",
+   "fieldtype": "Link",
+   "options": "Journal Entry",
+   "read_only": 1,
+   "no_copy": 1,
+   "description": "Summary JE posted to GL when closing sheet is approved"
+  },
+  {
+   "fieldname": "bypass_outstanding",
+   "label": "Bypass Outstanding Balance (Manager Only)",
+   "fieldtype": "Check",
+   "default": "0",
+   "description": "Manager override: allow closing even with outstanding customer balance"
   }
  ],
  "is_submittable": 1,

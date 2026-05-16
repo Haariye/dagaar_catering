@@ -1,0 +1,491 @@
+{
+ "actions": [],
+ "creation": "2024-01-01 00:00:00.000000",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "general_sb",
+  "default_currency",
+  "minimum_margin_percent",
+  "default_wastage_percent",
+  "cb_1",
+  "default_company",
+  "default_warehouse",
+  "default_cost_center",
+  "business_controls_sb",
+  "require_deposit_before_production",
+  "require_so_before_production",
+  "require_bom_for_work_order",
+  "require_delivery_before_invoice",
+  "require_profit_review_before_closure",
+  "notifications_sb",
+  "auto_create_activity_log",
+  "send_daily_alerts",
+  "send_weekly_summary",
+  "send_monthly_summary",
+  "accounting_sb",
+  "default_income_account",
+  "default_expense_account",
+  "default_cogs_account",
+  "default_deposit_percent",
+  "default_branch",
+  "default_project",
+  "default_price_list",
+  "default_source_warehouse",
+  "default_wip_warehouse",
+  "default_fg_warehouse",
+  "default_wastage_warehouse",
+  "default_advance_account",
+  "default_receivable_account",
+  "default_wastage_expense_account",
+  "default_emergency_expense_account",
+  "default_sales_tax_template",
+  "default_purchase_tax_template",
+  "require_invoice_before_closure",
+  "require_bom_for_production_items",
+  "auto_calculate_raw_materials",
+  "auto_check_stock_availability",
+  "auto_apply_wastage_to_cost",
+  "default_mode_of_payment",
+  "default_bank_account",
+  "minimum_payment_percent_for_production"
+ ],
+ "fields": [
+  {
+   "fieldname": "general_sb",
+   "fieldtype": "Section Break",
+   "label": "General",
+   "collapsible": 0
+  },
+  {
+   "fieldname": "default_currency",
+   "fieldtype": "Link",
+   "label": "Default Currency",
+   "reqd": 0,
+   "bold": 0,
+   "in_list_view": 0,
+   "in_filter": 0,
+   "read_only": 0,
+   "hidden": 0,
+   "options": "Currency"
+  },
+  {
+   "fieldname": "minimum_margin_percent",
+   "fieldtype": "Percent",
+   "label": "Minimum Margin %",
+   "reqd": 0,
+   "bold": 0,
+   "in_list_view": 0,
+   "in_filter": 0,
+   "read_only": 0,
+   "hidden": 0,
+   "default": "15"
+  },
+  {
+   "fieldname": "default_wastage_percent",
+   "fieldtype": "Percent",
+   "label": "Default Wastage %",
+   "reqd": 0,
+   "bold": 0,
+   "in_list_view": 0,
+   "in_filter": 0,
+   "read_only": 0,
+   "hidden": 0,
+   "default": "5"
+  },
+  {
+   "fieldname": "cb_1",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "default_company",
+   "fieldtype": "Link",
+   "label": "Default Company",
+   "reqd": 0,
+   "bold": 0,
+   "in_list_view": 0,
+   "in_filter": 0,
+   "read_only": 0,
+   "hidden": 0,
+   "options": "Company"
+  },
+  {
+   "fieldname": "default_warehouse",
+   "fieldtype": "Link",
+   "label": "Default Warehouse",
+   "reqd": 0,
+   "bold": 0,
+   "in_list_view": 0,
+   "in_filter": 0,
+   "read_only": 0,
+   "hidden": 0,
+   "options": "Warehouse"
+  },
+  {
+   "fieldname": "default_cost_center",
+   "fieldtype": "Link",
+   "label": "Default Cost Center",
+   "reqd": 0,
+   "bold": 0,
+   "in_list_view": 0,
+   "in_filter": 0,
+   "read_only": 0,
+   "hidden": 0,
+   "options": "Cost Center"
+  },
+  {
+   "fieldname": "business_controls_sb",
+   "fieldtype": "Section Break",
+   "label": "Business Controls",
+   "collapsible": 0
+  },
+  {
+   "fieldname": "require_deposit_before_production",
+   "fieldtype": "Check",
+   "label": "Require Deposit Before Production",
+   "reqd": 0,
+   "bold": 0,
+   "in_list_view": 0,
+   "in_filter": 0,
+   "read_only": 0,
+   "hidden": 0,
+   "default": "1"
+  },
+  {
+   "fieldname": "require_so_before_production",
+   "fieldtype": "Check",
+   "label": "Require Sales Order Before Production",
+   "reqd": 0,
+   "bold": 0,
+   "in_list_view": 0,
+   "in_filter": 0,
+   "read_only": 0,
+   "hidden": 0,
+   "default": "1"
+  },
+  {
+   "fieldname": "require_bom_for_work_order",
+   "fieldtype": "Check",
+   "label": "Require BOM for Work Order",
+   "reqd": 0,
+   "bold": 0,
+   "in_list_view": 0,
+   "in_filter": 0,
+   "read_only": 0,
+   "hidden": 0,
+   "default": "1"
+  },
+  {
+   "fieldname": "require_delivery_before_invoice",
+   "fieldtype": "Check",
+   "label": "Require Delivery Before Invoice",
+   "reqd": 0,
+   "bold": 0,
+   "in_list_view": 0,
+   "in_filter": 0,
+   "read_only": 0,
+   "hidden": 0,
+   "default": "1"
+  },
+  {
+   "fieldname": "require_profit_review_before_closure",
+   "fieldtype": "Check",
+   "label": "Require Profit Review Before Closure",
+   "reqd": 0,
+   "bold": 0,
+   "in_list_view": 0,
+   "in_filter": 0,
+   "read_only": 0,
+   "hidden": 0,
+   "default": "1"
+  },
+  {
+   "fieldname": "notifications_sb",
+   "fieldtype": "Section Break",
+   "label": "Notifications",
+   "collapsible": 0
+  },
+  {
+   "fieldname": "auto_create_activity_log",
+   "fieldtype": "Check",
+   "label": "Auto-Create Activity Log",
+   "reqd": 0,
+   "bold": 0,
+   "in_list_view": 0,
+   "in_filter": 0,
+   "read_only": 0,
+   "hidden": 0,
+   "default": "1"
+  },
+  {
+   "fieldname": "send_daily_alerts",
+   "fieldtype": "Check",
+   "label": "Send Daily Alerts",
+   "reqd": 0,
+   "bold": 0,
+   "in_list_view": 0,
+   "in_filter": 0,
+   "read_only": 0,
+   "hidden": 0,
+   "default": "1"
+  },
+  {
+   "fieldname": "send_weekly_summary",
+   "fieldtype": "Check",
+   "label": "Send Weekly Summary",
+   "reqd": 0,
+   "bold": 0,
+   "in_list_view": 0,
+   "in_filter": 0,
+   "read_only": 0,
+   "hidden": 0,
+   "default": "1"
+  },
+  {
+   "fieldname": "send_monthly_summary",
+   "fieldtype": "Check",
+   "label": "Send Monthly Summary",
+   "reqd": 0,
+   "bold": 0,
+   "in_list_view": 0,
+   "in_filter": 0,
+   "read_only": 0,
+   "hidden": 0,
+   "default": "1"
+  },
+  {
+   "fieldname": "accounting_sb",
+   "fieldtype": "Section Break",
+   "label": "Accounting",
+   "collapsible": 0
+  },
+  {
+   "fieldname": "default_income_account",
+   "fieldtype": "Link",
+   "label": "Default Income Account",
+   "reqd": 0,
+   "bold": 0,
+   "in_list_view": 0,
+   "in_filter": 0,
+   "read_only": 0,
+   "hidden": 0,
+   "options": "Account"
+  },
+  {
+   "fieldname": "default_expense_account",
+   "fieldtype": "Link",
+   "label": "Default Expense Account",
+   "reqd": 0,
+   "bold": 0,
+   "in_list_view": 0,
+   "in_filter": 0,
+   "read_only": 0,
+   "hidden": 0,
+   "options": "Account"
+  },
+  {
+   "fieldname": "default_cogs_account",
+   "fieldtype": "Link",
+   "label": "Default COGS Account",
+   "reqd": 0,
+   "bold": 0,
+   "in_list_view": 0,
+   "in_filter": 0,
+   "read_only": 0,
+   "hidden": 0,
+   "options": "Account"
+  },
+  {
+   "fieldname": "default_deposit_percent",
+   "label": "Default Initial Payment %",
+   "fieldtype": "Percent",
+   "default": "30",
+   "description": "Suggested initial payment % when creating first Payment Entry"
+  },
+  {
+   "fieldname": "default_branch",
+   "label": "Default Branch",
+   "fieldtype": "Link",
+   "options": "Branch"
+  },
+  {
+   "fieldname": "default_project",
+   "label": "Default Project",
+   "fieldtype": "Link",
+   "options": "Project"
+  },
+  {
+   "fieldname": "default_price_list",
+   "label": "Default Price List",
+   "fieldtype": "Link",
+   "options": "Price List"
+  },
+  {
+   "fieldname": "default_source_warehouse",
+   "label": "Default Raw Material Warehouse",
+   "fieldtype": "Link",
+   "options": "Warehouse"
+  },
+  {
+   "fieldname": "default_wip_warehouse",
+   "label": "Default WIP Warehouse",
+   "fieldtype": "Link",
+   "options": "Warehouse"
+  },
+  {
+   "fieldname": "default_fg_warehouse",
+   "label": "Default Finished Goods Warehouse",
+   "fieldtype": "Link",
+   "options": "Warehouse"
+  },
+  {
+   "fieldname": "default_wastage_warehouse",
+   "label": "Wastage Warehouse",
+   "fieldtype": "Link",
+   "options": "Warehouse"
+  },
+  {
+   "fieldname": "default_advance_account",
+   "label": "Default Advance Account",
+   "fieldtype": "Link",
+   "options": "Account"
+  },
+  {
+   "fieldname": "default_receivable_account",
+   "label": "Default Receivable Account",
+   "fieldtype": "Link",
+   "options": "Account"
+  },
+  {
+   "fieldname": "default_wastage_expense_account",
+   "label": "Wastage Expense Account",
+   "fieldtype": "Link",
+   "options": "Account"
+  },
+  {
+   "fieldname": "default_emergency_expense_account",
+   "label": "Emergency Expense Account",
+   "fieldtype": "Link",
+   "options": "Account"
+  },
+  {
+   "fieldname": "default_sales_tax_template",
+   "label": "Default Sales Tax Template",
+   "fieldtype": "Link",
+   "options": "Sales Taxes and Charges Template"
+  },
+  {
+   "fieldname": "default_purchase_tax_template",
+   "label": "Default Purchase Tax Template",
+   "fieldtype": "Link",
+   "options": "Purchase Taxes and Charges Template"
+  },
+  {
+   "fieldname": "require_invoice_before_closure",
+   "label": "Require Invoice before Closure",
+   "fieldtype": "Check",
+   "default": "1"
+  },
+  {
+   "fieldname": "require_bom_for_production_items",
+   "label": "Require BOM for Production Items",
+   "fieldtype": "Check",
+   "default": "1"
+  },
+  {
+   "fieldname": "auto_calculate_raw_materials",
+   "label": "Auto-calculate Raw Materials from BOM",
+   "fieldtype": "Check",
+   "default": "1"
+  },
+  {
+   "fieldname": "auto_check_stock_availability",
+   "label": "Auto-check Stock Availability",
+   "fieldtype": "Check",
+   "default": "1"
+  },
+  {
+   "fieldname": "auto_apply_wastage_to_cost",
+   "label": "Auto-apply Wastage % to Cost",
+   "fieldtype": "Check",
+   "default": "1"
+  },
+  {
+   "fieldname": "default_mode_of_payment",
+   "label": "Default Mode of Payment",
+   "fieldtype": "Link",
+   "options": "Mode of Payment"
+  },
+  {
+   "fieldname": "default_bank_account",
+   "label": "Default Bank/Cash Account",
+   "fieldtype": "Link",
+   "options": "Account",
+   "description": "Account where deposits are received (Bank or Cash type)"
+  },
+  {
+   "fieldname": "minimum_payment_percent_for_production",
+   "label": "Minimum Payment % Required Before Production",
+   "fieldtype": "Percent",
+   "default": "30",
+   "description": "Catering Order must have at least this % of Sales Invoice paid before Production can start. (Manager can bypass.)"
+  }
+ ],
+ "is_submittable": 0,
+ "issingle": 1,
+ "istable": 0,
+ "links": [],
+ "modified": "2024-01-01 00:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Catering Management",
+ "name": "Catering Settings",
+ "naming_series": "",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "role": "Catering Manager",
+   "read": 1,
+   "write": 1,
+   "create": 0,
+   "delete": 0,
+   "submit": 0,
+   "cancel": 0,
+   "amend": 0,
+   "report": 1,
+   "export": 1,
+   "share": 1,
+   "print": 1,
+   "email": 1
+  },
+  {
+   "role": "Catering Management",
+   "read": 1,
+   "write": 1,
+   "create": 0,
+   "delete": 0,
+   "submit": 0,
+   "cancel": 0,
+   "amend": 0,
+   "report": 1,
+   "export": 1,
+   "share": 1,
+   "print": 1,
+   "email": 1
+  },
+  {
+   "role": "System Manager",
+   "read": 1,
+   "write": 1,
+   "report": 0,
+   "export": 0,
+   "share": 0,
+   "print": 0,
+   "email": 0
+  }
+ ],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "track_changes": 1
+}

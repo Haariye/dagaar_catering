@@ -60,7 +60,8 @@
    "in_filter": 0,
    "read_only": 0,
    "hidden": 0,
-   "options": "UOM"
+   "options": "UOM",
+   "fetch_from": "item_code.stock_uom"
   },
   {
    "fieldname": "valuation_rate",
@@ -70,8 +71,10 @@
    "bold": 0,
    "in_list_view": 1,
    "in_filter": 0,
-   "read_only": 0,
-   "hidden": 0
+   "read_only": 1,
+   "hidden": 0,
+   "fetch_from": "item_code.valuation_rate",
+   "description": "Auto-fetched from Item master; can be overridden"
   },
   {
    "fieldname": "amount",
@@ -82,7 +85,8 @@
    "in_list_view": 1,
    "in_filter": 0,
    "read_only": 1,
-   "hidden": 0
+   "hidden": 0,
+   "description": "Auto-calculated: qty \u00d7 valuation_rate"
   },
   {
    "fieldname": "reason",
@@ -105,7 +109,9 @@
    "in_filter": 0,
    "read_only": 0,
    "hidden": 0,
-   "options": "Warehouse"
+   "options": "Warehouse",
+   "fetch_from": "parent.warehouse",
+   "description": "Defaults to the warehouse selected on the parent Wastage Entry"
   }
  ],
  "is_submittable": 0,

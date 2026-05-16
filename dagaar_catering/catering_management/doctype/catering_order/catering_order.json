@@ -18,7 +18,6 @@
   "contact_mobile",
   "cb_037183",
   "status",
-  "workflow_state",
   "workflow_progress_section",
   "workflow_dashboard",
   "event_information_sb",
@@ -30,16 +29,11 @@
   "event_address",
   "package_guests_sb",
   "package_type",
-  "menu_package",
-  "price_per_guest",
+  "menu_packages",
   "cb_642169",
   "total_guests",
-  "vip_guests",
-  "children_guests",
-  "staff_guests",
   "menu_items_sb",
   "items",
-  "guest_types",
   "financial_summary_sb",
   "subtotal",
   "discount_percent",
@@ -93,10 +87,13 @@
   "profitability_section",
   "created_by_name",
   "title",
-  "amended_from"
+  "amended_from",
+  "last_billed_snapshot",
+  "requires_rebill"
  ],
  "fields": [
   {
+   "allow_on_submit": 1,
    "fieldname": "profitability_html",
    "fieldtype": "HTML",
    "label": "Profitability"
@@ -173,22 +170,19 @@
    "fieldtype": "Column Break"
   },
   {
+   "allow_on_submit": 1,
    "bold": 1,
    "default": "Draft",
+   "description": "Auto-managed by the system based on workflow stage. Cannot be edited manually.",
    "fieldname": "status",
    "fieldtype": "Select",
    "in_filter": 1,
    "in_list_view": 1,
+   "in_standard_filter": 1,
    "label": "Status",
-   "options": "Draft\nPending Approval\nApproved\nQuoted\nConfirmed\nSales Order Created\nDeposit Received\nInvoiced\nPaid\nIn Production\nReady for Delivery\nReady to Deliver\nDelivered\nClosed\nCancelled",
+   "options": "Draft\nPending Approval\nApproved\nQuoted\nConfirmed\nSales Order Created\nDeposit Received\nInvoiced\nPaid\nIn Production\nReady for Delivery\nReady to Deliver\nDelivered\nClosed\nCancelled\nVoid",
+   "read_only": 1,
    "reqd": 1
-  },
-  {
-   "fieldname": "workflow_state",
-   "fieldtype": "Data",
-   "hidden": 1,
-   "label": "Workflow State",
-   "read_only": 1
   },
   {
    "fieldname": "workflow_progress_section",
@@ -196,6 +190,7 @@
    "label": "Workflow Progress"
   },
   {
+   "allow_on_submit": 1,
    "fieldname": "workflow_dashboard",
    "fieldtype": "HTML",
    "label": "Progress"
@@ -256,47 +251,27 @@
    "reqd": 1
   },
   {
-   "fieldname": "menu_package",
-   "fieldtype": "Link",
-   "label": "Menu Package",
-   "options": "Catering Menu Package"
-  },
-  {
-   "fetch_from": "menu_package.price_per_guest",
-   "fieldname": "price_per_guest",
-   "fieldtype": "Currency",
-   "label": "Price per Guest",
-   "options": "currency"
+   "allow_on_submit": 1,
+   "description": "Each row defines a menu package and the number of guests it serves. Items load automatically from each package \u00d7 its guest count.",
+   "fieldname": "menu_packages",
+   "fieldtype": "Table",
+   "label": "Menu Packages (one row per guest type)",
+   "options": "Catering Order Menu Package",
+   "reqd": 1
   },
   {
    "fieldname": "cb_642169",
    "fieldtype": "Column Break"
   },
   {
+   "allow_on_submit": 1,
    "bold": 1,
+   "description": "Auto-computed: sum of guest counts across all menu package rows",
    "fieldname": "total_guests",
    "fieldtype": "Int",
    "in_list_view": 1,
    "label": "Total Guests",
-   "reqd": 1
-  },
-  {
-   "default": "0",
-   "fieldname": "vip_guests",
-   "fieldtype": "Int",
-   "label": "VIP Guests"
-  },
-  {
-   "default": "0",
-   "fieldname": "children_guests",
-   "fieldtype": "Int",
-   "label": "Children"
-  },
-  {
-   "default": "0",
-   "fieldname": "staff_guests",
-   "fieldtype": "Int",
-   "label": "Staff/Crew"
+   "read_only": 1
   },
   {
    "fieldname": "menu_items_sb",
@@ -304,16 +279,11 @@
    "label": "Menu Items"
   },
   {
+   "allow_on_submit": 1,
    "fieldname": "items",
    "fieldtype": "Table",
    "label": "Menu Items",
    "options": "Catering Order Item"
-  },
-  {
-   "fieldname": "guest_types",
-   "fieldtype": "Table",
-   "label": "Guest Type Breakdown",
-   "options": "Catering Order Guest Type"
   },
   {
    "fieldname": "financial_summary_sb",
@@ -321,18 +291,21 @@
    "label": "Financial Summary"
   },
   {
+   "allow_on_submit": 1,
    "fieldname": "subtotal",
    "fieldtype": "Currency",
    "label": "Subtotal",
    "read_only": 1
   },
   {
+   "allow_on_submit": 1,
    "default": "0",
    "fieldname": "discount_percent",
    "fieldtype": "Percent",
    "label": "Discount %"
   },
   {
+   "allow_on_submit": 1,
    "fieldname": "discount_amount",
    "fieldtype": "Currency",
    "label": "Discount Amount",
@@ -343,6 +316,7 @@
    "fieldtype": "Column Break"
   },
   {
+   "allow_on_submit": 1,
    "bold": 1,
    "fieldname": "total_order_value",
    "fieldtype": "Currency",
@@ -377,6 +351,7 @@
    "options": "Sales Taxes and Charges Template"
   },
   {
+   "allow_on_submit": 1,
    "fieldname": "total_taxes",
    "fieldtype": "Currency",
    "label": "Total Taxes",
@@ -384,18 +359,21 @@
    "read_only": 1
   },
   {
+   "allow_on_submit": 1,
    "default": "30",
    "fieldname": "deposit_percent",
    "fieldtype": "Percent",
    "label": "Deposit Required %"
   },
   {
+   "allow_on_submit": 1,
    "fieldname": "deposit_amount",
    "fieldtype": "Currency",
    "label": "Deposit Amount",
    "read_only": 1
   },
   {
+   "allow_on_submit": 1,
    "fieldname": "deposit_received",
    "fieldtype": "Currency",
    "label": "Deposit Received",
@@ -409,6 +387,7 @@
    "label": "Bypass Deposit Requirement (Manager Only)"
   },
   {
+   "allow_on_submit": 1,
    "fieldname": "total_paid",
    "fieldtype": "Currency",
    "label": "Total Paid",
@@ -416,6 +395,7 @@
    "read_only": 1
   },
   {
+   "allow_on_submit": 1,
    "bold": 1,
    "fieldname": "balance_due",
    "fieldtype": "Currency",
@@ -470,6 +450,7 @@
    "options": "Account"
   },
   {
+   "allow_on_submit": 1,
    "fieldname": "project",
    "fieldtype": "Link",
    "label": "Project",
@@ -527,6 +508,7 @@
    "label": "Linked Documents"
   },
   {
+   "allow_on_submit": 1,
    "fieldname": "quotation",
    "fieldtype": "Link",
    "label": "Quotation",
@@ -534,6 +516,7 @@
    "read_only": 1
   },
   {
+   "allow_on_submit": 1,
    "fieldname": "sales_order",
    "fieldtype": "Link",
    "label": "Sales Order",
@@ -541,6 +524,7 @@
    "read_only": 1
   },
   {
+   "allow_on_submit": 1,
    "fieldname": "sales_invoice",
    "fieldtype": "Link",
    "label": "Sales Invoice",
@@ -548,6 +532,7 @@
    "read_only": 1
   },
   {
+   "allow_on_submit": 1,
    "fieldname": "delivery_note",
    "fieldtype": "Link",
    "label": "Delivery Note",
@@ -560,6 +545,7 @@
    "fieldtype": "Column Break"
   },
   {
+   "allow_on_submit": 1,
    "fieldname": "production_plan",
    "fieldtype": "Link",
    "label": "Production Plan",
@@ -567,6 +553,7 @@
    "read_only": 1
   },
   {
+   "allow_on_submit": 1,
    "fieldname": "cost_sheet",
    "fieldtype": "Link",
    "label": "Cost Sheet",
@@ -574,6 +561,7 @@
    "read_only": 1
   },
   {
+   "allow_on_submit": 1,
    "fieldname": "closing_sheet",
    "fieldtype": "Link",
    "label": "Closing Sheet",
@@ -592,6 +580,7 @@
    "read_only": 1
   },
   {
+   "allow_on_submit": 1,
    "fieldname": "material_request",
    "fieldtype": "Link",
    "label": "Material Request",
@@ -599,6 +588,7 @@
    "read_only": 1
   },
   {
+   "allow_on_submit": 1,
    "fieldname": "delivery_plan",
    "fieldtype": "Link",
    "label": "Delivery Plan",
@@ -642,11 +632,31 @@
    "options": "Catering Order",
    "print_hide": 1,
    "read_only": 1
+  },
+  {
+   "allow_on_submit": 1,
+   "description": "Hash of total_guests + items used to detect post-billing changes",
+   "fieldname": "last_billed_snapshot",
+   "fieldtype": "Data",
+   "hidden": 1,
+   "label": "Last Billed Snapshot",
+   "no_copy": 1,
+   "read_only": 1
+  },
+  {
+   "allow_on_submit": 1,
+   "default": "1",
+   "description": "Set automatically when order changes after Sales Invoice was created",
+   "fieldname": "requires_rebill",
+   "fieldtype": "Check",
+   "label": "Requires Rebill",
+   "no_copy": 1,
+   "read_only": 1
   }
  ],
  "is_submittable": 1,
  "links": [],
- "modified": "2026-05-10 14:49:29.994975",
+ "modified": "2026-05-16 13:59:42.734069",
  "modified_by": "Administrator",
  "module": "Catering Management",
  "name": "Catering Order",

@@ -17,7 +17,8 @@
   "notes_sb",
   "reason",
   "stock_entry",
-  "notes"
+  "notes",
+  "journal_entry"
  ],
  "fields": [
   {
@@ -64,13 +65,14 @@
    "fieldname": "warehouse",
    "fieldtype": "Link",
    "label": "Warehouse",
-   "reqd": 0,
+   "reqd": 1,
    "bold": 0,
    "in_list_view": 0,
    "in_filter": 0,
    "read_only": 0,
    "hidden": 0,
-   "options": "Warehouse"
+   "options": "Warehouse",
+   "description": "Defaults to Catering Settings \u2192 Default Wastage Warehouse if available"
   },
   {
    "fieldname": "company",
@@ -82,7 +84,8 @@
    "in_filter": 0,
    "read_only": 0,
    "hidden": 0,
-   "options": "Company"
+   "options": "Company",
+   "fetch_from": "catering_order.company"
   },
   {
    "fieldname": "total_wastage_value",
@@ -93,7 +96,8 @@
    "in_list_view": 1,
    "in_filter": 0,
    "read_only": 1,
-   "hidden": 0
+   "hidden": 0,
+   "description": "Auto-calculated: sum of all child item amounts"
   },
   {
    "fieldname": "wastage_items_sb",
@@ -153,6 +157,14 @@
    "in_filter": 0,
    "read_only": 0,
    "hidden": 0
+  },
+  {
+   "fieldname": "journal_entry",
+   "label": "Posted Journal Entry",
+   "fieldtype": "Link",
+   "options": "Journal Entry",
+   "read_only": 1,
+   "no_copy": 1
   }
  ],
  "is_submittable": 1,

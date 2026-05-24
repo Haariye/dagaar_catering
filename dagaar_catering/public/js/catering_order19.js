@@ -71,25 +71,6 @@ frappe.ui.form.on('Catering Order Menu Package', {
 	menu_package: function(frm, cdt, cdn) {
 		const row = locals[cdt][cdn];
 		if (!row.menu_package) return;
-
-		// #1: Check for duplicate selection across rows. If found, clear this
-		// row's selection and warn — the same package can't appear twice.
-		const dupe = (frm.doc.menu_packages || []).find(
-			p => p.name !== row.name && p.menu_package === row.menu_package
-		);
-		if (dupe) {
-			frappe.msgprint({
-				title: __('Duplicate Package'),
-				message: __('Menu Package <b>{0}</b> is already in row #{1}. ' +
-				            'Combine the guest counts in a single row instead.',
-				            [row.menu_package, dupe.idx]),
-				indicator: 'red'
-			});
-			frappe.model.set_value(cdt, cdn, 'menu_package', '');
-			return;
-		}
-
-		// Update this row's subtotal from package price × guest_count
 		frappe.db.get_value('Catering Menu Package', row.menu_package,
 			'price_per_guest', (r) => {
 			if (r && r.price_per_guest && row.guest_count) {
@@ -97,51 +78,12 @@ frappe.ui.form.on('Catering Order Menu Package', {
 					flt(r.price_per_guest) * flt(row.guest_count));
 			}
 		});
-
-		// #2: Add this package's items into the items table (don't wipe existing).
-		// Match by item_code; skip items already in the table to avoid duplicates.
-		frappe.call({
-			method: 'dagaar_catering.catering_management.controllers.catering_order.get_items_for_package',
-			args: { menu_package: row.menu_package },
-			callback: (r) => {
-				const pkg_items = r.message || [];
-				if (!pkg_items.length) return;
-
-				const existing_codes = new Set(
-					(frm.doc.items || []).map(i => i.item_code)
-				);
-				const gc = flt(row.guest_count || 0);
-				let added = 0;
-
-				pkg_items.forEach(pi => {
-					if (existing_codes.has(pi.item_code)) return;
-					const new_row = frm.add_child('items');
-					new_row.item_code = pi.item_code;
-					new_row.item_name = pi.item_name || pi.item_code;
-					new_row.qty_per_guest = flt(pi.qty_per_guest || 0);
-					new_row.guest_count = gc;
-					new_row.total_qty = flt(pi.qty_per_guest || 0) * gc;
-					new_row.rate = flt(pi.rate || 0);
-					new_row.amount = new_row.total_qty * new_row.rate;
-					new_row.uom = pi.uom || 'Nos';
-					added++;
-				});
-
-				if (added) {
-					frm.refresh_field('items');
-					frappe.show_alert({
-						message: __('Added {0} item(s) from {1}', [added, row.menu_package]),
-						indicator: 'blue'
-					}, 4);
-				}
-			}
-		});
 	},
 
 	guest_count: function(frm, cdt, cdn) {
 		const row = locals[cdt][cdn];
 
-		// Update row subtotal
+		// 1) Update THIS row's subtotal
 		if (row.menu_package) {
 			frappe.db.get_value('Catering Menu Package', row.menu_package,
 				'price_per_guest', (r) => {
@@ -152,24 +94,36 @@ frappe.ui.form.on('Catering Order Menu Package', {
 			});
 		}
 
-		// Recompute total_guests locally
+		// 2) Recompute total_guests
 		let total = 0;
 		(frm.doc.menu_packages || []).forEach(p => total += (p.guest_count || 0));
 		frm.doc.total_guests = total;
 		frm.refresh_field('total_guests');
 
-		// Sync items belonging to THIS package's master to the new guest_count
+		// 3) Sync linked items.
+		// Match by THE PACKAGE MASTER VALUE (row.menu_package), not row.name.
+		// Row names are unstable across save/reload; the package master link is stable.
 		if (!row.menu_package || !row.guest_count) return;
+
+		// Find items whose menu_package_item was created from this package.
+		// Since menu_package_item is a Data field that originally stored the row
+		// name, but item_code matches one of the package's items, we sync by
+		// looking up which items came from THIS package master via server.
 		frappe.call({
 			method: 'dagaar_catering.catering_management.controllers.catering_order.get_items_for_package',
-			args: { menu_package: row.menu_package },
+			args: {
+				menu_package: row.menu_package,
+			},
 			callback: (r) => {
 				const pkg_item_codes = (r.message || []).map(x => x.item_code);
 				if (!pkg_item_codes.length) return;
+
+				// Find rows in items table whose item_code is in this package
 				const linked = (frm.doc.items || []).filter(
 					it => pkg_item_codes.includes(it.item_code)
 				);
 				if (!linked.length) return;
+
 				let updated = 0;
 				linked.forEach(it => {
 					frappe.model.set_value(it.doctype, it.name, 'guest_count',
@@ -180,72 +134,18 @@ frappe.ui.form.on('Catering Order Menu Package', {
 						new_total * flt(it.rate));
 					updated++;
 				});
+
 				if (updated) {
 					frm.refresh_field('items');
+					// Recompute order totals
+					_recalc_totals(frm);
 					frappe.show_alert({
-						message: __('Synced {0} item(s) to {1} guests',
-						            [updated, row.guest_count]),
+						message: __('Synced {0} item(s) to {1} guests', [updated, row.guest_count]),
 						indicator: 'blue'
 					}, 4);
 				}
 			}
 		});
-	},
-
-	// When user REMOVES a menu_packages row:
-	//   - Block removal if any of that package's items are already billed
-	//     on a submitted Sales Invoice
-	//   - Otherwise, remove all items belonging to that package from the items table
-	before_menu_packages_remove: async function(frm, cdt, cdn) {
-		const row = locals[cdt][cdn];
-		if (!row.menu_package) return;
-
-		// Fetch this package's item codes from server
-		const r = await frappe.call({
-			method: 'dagaar_catering.catering_management.controllers.catering_order.get_items_for_package',
-			args: { menu_package: row.menu_package },
-		});
-		const pkg_codes = (r.message || []).map(x => x.item_code);
-		if (!pkg_codes.length) return;
-
-		// Check if any of these items are on a submitted SI for this order
-		if (frm.doc.name) {
-			const chk = await frappe.call({
-				method: 'dagaar_catering.catering_management.controllers.catering_order.check_items_invoiced',
-				args: { catering_order: frm.doc.name, item_codes: pkg_codes },
-			});
-			const invoiced = chk.message || [];
-			if (invoiced.length) {
-				frappe.msgprint({
-					title: __('Cannot Remove Package'),
-					message: __('This package contains item(s) already billed on a submitted Sales Invoice: <b>{0}</b><br><br>' +
-					            'Package removal is blocked to keep books in sync.',
-					            [invoiced.join(', ')]),
-					indicator: 'red'
-				});
-				frappe.validated = false;
-				return false;
-			}
-		}
-
-		// Safe — remove items from items table that belong to this package
-		const to_remove = (frm.doc.items || []).filter(
-			it => pkg_codes.includes(it.item_code)
-		);
-		let removed = 0;
-		to_remove.forEach(it => {
-			frm.get_field('items').grid.grid_rows.forEach(gr => {
-				if (gr.doc.name === it.name) gr.remove();
-			});
-			removed++;
-		});
-		if (removed) {
-			frm.refresh_field('items');
-			frappe.show_alert({
-				message: __('Removed {0} item(s) from {1}', [removed, row.menu_package]),
-				indicator: 'orange'
-			}, 4);
-		}
 	},
 });
 
@@ -309,12 +209,6 @@ frappe.ui.form.on('Catering Order Item', {
 	qty_per_guest: (frm, cdt, cdn) => _recalc_item(frm, cdt, cdn),
 	guest_count: (frm, cdt, cdn) => _recalc_item(frm, cdt, cdn),
 	rate: (frm, cdt, cdn) => _recalc_item(frm, cdt, cdn),
-
-	qty_per_guest: function(frm) { _recalc_totals(frm); },
-	total_qty: function(frm) { _recalc_totals(frm); },
-	rate: function(frm) { _recalc_totals(frm); },
-	amount: function(frm) { _recalc_totals(frm); },
-	guest_count: function(frm) { _recalc_totals(frm); },
 });
 
 function _recalc_item(frm, cdt, cdn) {
@@ -335,55 +229,6 @@ function _recalc_totals(frm) {
 	frm.doc.balance_due = frm.doc.total_order_value - (frm.doc.total_paid || 0);
 	['subtotal', 'discount_amount', 'total_order_value', 'deposit_amount', 'balance_due']
 		.forEach(f => frm.refresh_field(f));
-
-	// Also refresh the Regenerate Bill button visibility (after table edits)
-	_refresh_billing_state(frm);
-}
-
-// Re-evaluate the Regenerate Bill button without doing a full form refresh.
-// Compares saved server total to current edited total to decide visibility.
-// Note: server-side net_billed only changes when a new SI is created, but
-// the order's total_order_value just changed locally — so we predict drift.
-function _refresh_billing_state(frm) {
-	if (!frm.doc.sales_invoice || !frm.doc.name) return;
-
-	frappe.call({
-		method: 'dagaar_catering.catering_management.controllers.catering_order.get_billing_status',
-		args: { catering_order: frm.doc.name },
-		callback: (br) => {
-			const bs = br.message || {};
-			// Predicted unbilled = LIVE local order total - server's net_billed
-			const predicted_unbilled = flt(frm.doc.total_order_value) - flt(bs.net_billed || 0);
-
-			// Remove existing Regenerate Bill button if present
-			frm.remove_custom_button(__('⚠️ Regenerate Bill'), __('Create'));
-			frm.remove_custom_button(__('⚠️ Regenerate Bill'));
-
-			// Re-add if drift detected (and a package SI exists)
-			if (bs.has_sales_invoice && Math.abs(predicted_unbilled) > 0.01) {
-				const dir = predicted_unbilled > 0 ? 'under-billed' : 'over-billed';
-				const btn = frm.add_custom_button(__('⚠️ Regenerate Bill'), () => {
-					if (frm.is_dirty()) {
-						frappe.msgprint(__('Save the order first, then click Regenerate Bill.'));
-						return;
-					}
-					frappe.confirm(
-						__('Sync the Sales Invoice with current order? Unbilled diff: <b>{0}</b> ({1})',
-						   [format_currency(Math.abs(predicted_unbilled), bs.currency), dir]),
-						() => {
-							frappe.call({
-								method: 'dagaar_catering.catering_management.controllers.catering_order.update_sales_invoice',
-								args: { catering_order: frm.doc.name },
-								freeze: true, freeze_message: __('Regenerating bill...'),
-								callback: () => frm.reload_doc(),
-							});
-						}
-					);
-				});
-				if (btn) btn.addClass('btn-danger').css({'font-weight': 'bold'});
-			}
-		}
-	});
 }
 
 // ─── Action Buttons ────────────────────────────────────────────────────────
@@ -423,17 +268,10 @@ function _setup_action_buttons(frm) {
 		});
 	}
 
-	// 💵 Quick Expense — always available on submitted, active orders
+	// 💵 Quick Expense + 🛎 Additional Service — under "Create" group
 	if (d.docstatus === 1 && d.status !== 'Closed' && d.status !== 'Void') {
 		frm.add_custom_button(__('💵 Quick Expense'),
 			() => _show_quick_expense_dialog(frm), __('Create'));
-	}
-
-	// 🛎 Additional Service — only after Sales Order AND Sales Invoice are created
-	// (additional services are billed separately, but the primary invoicing flow
-	// must be in place first to avoid confusion)
-	if (d.docstatus === 1 && d.status !== 'Closed' && d.status !== 'Void'
-	    && d.sales_order && d.sales_invoice) {
 		frm.add_custom_button(__('🛎 Additional Service'),
 			() => _show_additional_service_dialog(frm), __('Create'));
 	}
@@ -447,122 +285,79 @@ function _setup_action_buttons(frm) {
 		frm.add_custom_button(__('Sales Order'),
 			() => _show_sales_order_dialog(frm), __('Create'));
 	}
-	// Sales Invoice button — simple: show when sales_order exists and no
-	// package SI exists yet. Server's _get_package_sales_invoice ensures
-	// additional service SIs don't count.
 	if (d.sales_order && !d.sales_invoice) {
 		frm.add_custom_button(__('Sales Invoice'),
 			() => _show_sales_invoice_dialog(frm), __('Create'));
 	}
 	// Payment Entry button — appears whenever ANY linked Sales Invoice has
-	// outstanding balance (unpaid, partly paid, or overdue). Covers package SI,
-	// supplementary SIs, AND additional service SIs. No gate on co.sales_invoice
-	// because additional service SIs may exist before any package SI.
-	frappe.db.count('Sales Invoice', {
-		filters: {
-			catering_order: d.name,
-			docstatus: 1,
-			outstanding_amount: ['>', 0.01],
-			is_return: 0,
-		}
-	}).then(cnt => {
-		if (cnt > 0) {
-			frm.add_custom_button(__('Payment Entry'),
-				() => _show_payment_entry_dialog(frm), __('Create'));
-		}
-	});
+	// outstanding > 0 (covers main SI, supplementary SIs, additional service SIs)
+	if (d.sales_invoice) {
+		frappe.db.sql ? null : null;  // keep async pattern
+		frappe.db.count('Sales Invoice', {
+			filters: {
+				catering_order: d.name,
+				docstatus: 1,
+				outstanding_amount: ['>', 0.01],
+				is_return: 0,
+			}
+		}).then(cnt => {
+			if (cnt > 0) {
+				frm.add_custom_button(__('Payment Entry'),
+					() => _show_payment_entry_dialog(frm), __('Create'));
+			}
+		});
+	}
 	if (d.sales_invoice && !d.production_plan) {
 		frm.add_custom_button(__('Production Plan'),
 			() => _action(frm, 'create_production_plan'), __('Create'));
 	}
-	// Delivery Plan button: requires ALL Work Orders for this catering order to be COMPLETED.
-	// Uses server endpoint to check work order completion status — prevents premature delivery
-	// planning when some dishes haven't finished cooking.
-	if (d.sales_invoice && !d.delivery_plan && d.production_plan) {
-		frappe.call({
-			method: 'dagaar_catering.catering_management.controllers.catering_order.check_work_orders_complete',
-			args: { catering_order: d.name },
-			callback: (r) => {
-				const st = r.message || {};
-				if (st.all_complete && st.total > 0) {
-					frm.add_custom_button(__('Delivery Plan'),
-						() => _action(frm, 'create_delivery_plan'), __('Create'));
-				} else if (st.total > 0) {
-					// Show informative indicator with progress
-					frm.dashboard.add_indicator(
-						__('⏳ Production in progress — {0} of {1} Work Order(s) complete. Finish all to enable Delivery Plan.',
-						   [st.completed, st.total]),
-						'orange'
-					);
-				} else {
-					frm.dashboard.add_indicator(
-						__('⏳ Awaiting Work Orders. Open Production Plan to start manufacture.'),
-						'grey'
-					);
-				}
+	// Delivery Plan button: requires at least one submitted Manufacture Stock Entry
+	if (d.sales_invoice && !d.delivery_plan) {
+		frappe.db.count('Stock Entry', {
+			filters: {
+				catering_order: d.name,
+				purpose: 'Manufacture',
+				docstatus: 1,
+			}
+		}).then(cnt => {
+			if (cnt > 0) {
+				frm.add_custom_button(__('Delivery Plan'),
+					() => _action(frm, 'create_delivery_plan'), __('Create'));
+			} else if (d.production_plan) {
+				// PP exists but no finished manufacture yet — show informational tip
+				frm.dashboard.add_indicator(
+					__('⏳ Production in progress — complete Manufacture Stock Entry to enable Delivery Plan'),
+					'orange'
+				);
 			}
 		});
 	}
-	// Closing Sheet — only after a submitted Delivery Note exists for this order.
-	// Confirms physical delivery has happened before we let user close the books.
-	if (d.sales_invoice && d.delivery_plan && !d.closing_sheet) {
-		frappe.db.count('Delivery Note', {
-			filters: { catering_order: d.name, docstatus: 1 }
-		}).then(dn_count => {
-			if (dn_count > 0) {
-				frm.add_custom_button(__('Closing Sheet'),
-					() => _action(frm, 'create_closing_sheet'), __('Create'));
-			}
-		});
+	if (d.sales_invoice && !d.closing_sheet) {
+		frm.add_custom_button(__('Closing Sheet'),
+			() => _action(frm, 'create_closing_sheet'), __('Create'));
 	}
 
-	// Regenerate Bill — LIVE check: compares order_total to net_billed via
-	// the package SI. Shows whenever a package SI exists and amounts differ.
-	// No reliance on requires_rebill flag (which can be stale).
-	if (d.sales_invoice) {
-		frappe.call({
-			method: 'dagaar_catering.catering_management.controllers.catering_order.get_billing_status',
-			args: { catering_order: d.name },
-			callback: (br) => {
-				const bs = br.message || {};
-				// Show only if a PACKAGE SI exists (not just an additional service SI)
-				// AND there's a non-trivial difference between order total and net billed
-				if (bs.has_sales_invoice && Math.abs(bs.unbilled_amount || 0) > 0.01) {
-					const diff = bs.unbilled_amount;
-					const dir = diff > 0 ? 'under-billed' : 'over-billed';
-					frm.add_custom_button(__('⚠️ Regenerate Bill'), () => {
-						frappe.confirm(
-							__('The order was amended since the last invoice.<br><br>' +
-							   'Current order total: <b>{0}</b><br>' +
-							   'Net billed so far: <b>{1}</b><br>' +
-							   'Unbilled difference: <b style="color:{2};">{3}</b> ({4})<br><br>' +
-							   'This will sync the Sales Invoice. ' +
-							   'Sales Order, Work Orders, and Payments stay intact. Continue?',
-							   [
-								   format_currency(bs.order_total, bs.currency),
-								   format_currency(bs.net_billed, bs.currency),
-								   diff > 0 ? '#c0392b' : '#27ae60',
-								   format_currency(Math.abs(diff), bs.currency),
-								   dir
-							   ]),
-							() => {
-								frappe.call({
-									method: 'dagaar_catering.catering_management.controllers.catering_order.update_sales_invoice',
-									args: { catering_order: frm.doc.name },
-									freeze: true, freeze_message: __('Regenerating bill...'),
-									callback: () => {
-										frm.reload_doc();
-										frappe.show_alert({
-											message: __('Bill regenerated'), indicator: 'green'
-										}, 5);
-									},
-								});
-							}
-						);
-					}).addClass('btn-danger').css({'font-weight': 'bold'});
+	if (d.requires_rebill && d.sales_invoice) {
+		frm.add_custom_button(__('⚠️ Regenerate Bill'), () => {
+			frappe.confirm(
+				__('The order was amended since the last invoice. ' +
+				   'This will sync the Sales Invoice with current items / guest counts. ' +
+				   'Sales Order, Work Orders and Payments stay intact. Continue?'),
+				() => {
+					frappe.call({
+						method: 'dagaar_catering.catering_management.controllers.catering_order.update_sales_invoice',
+						args: { catering_order: frm.doc.name },
+						freeze: true, freeze_message: __('Regenerating bill...'),
+						callback: () => {
+							frm.reload_doc();
+							frappe.show_alert({
+								message: __('Bill regenerated'), indicator: 'green'
+							}, 5);
+						},
+					});
 				}
-			}
-		});
+			);
+		}).addClass('btn-danger').css({'font-weight': 'bold'});
 	}
 
 	frm.add_custom_button(__('Wastage'),
@@ -846,132 +641,61 @@ function _show_sales_invoice_dialog(frm) {
 
 function _show_payment_entry_dialog(frm) {
 	frappe.call({
-		method: 'dagaar_catering.catering_management.controllers.catering_order.get_unpaid_invoices',
+		method: 'dagaar_catering.catering_management.controllers.catering_order.get_payment_defaults',
 		args: { catering_order: frm.doc.name },
 		callback: (r) => {
-			const invoices = r.message || [];
-			if (!invoices.length) {
-				frappe.msgprint(__('No unpaid invoices found for this order.'));
+			if (!r.message) return;
+			if (r.message.error) {
+				frappe.msgprint({ title: __('Cannot Create'), message: r.message.error, indicator: 'red' });
 				return;
 			}
-			const cur = invoices[0].currency || frm.doc.currency || 'USD';
-			const init_total = invoices.reduce((s, i) => s + i.outstanding_amount, 0);
-
+			const d = r.message;
 			const dialog = new frappe.ui.Dialog({
 				title: __('Record Payment'),
-				size: 'large',
 				fields: [
-					{
-						fieldname: 'invoices_html', fieldtype: 'HTML',
-						options: `
-							<div style="margin-bottom:8px;color:#555;">
-								Select which invoices to pay. Edit each amount or uncheck to skip.
-							</div>
-							<table class="table table-bordered" style="font-size:12px;">
-								<thead style="background:#f5f5f5;">
-									<tr>
-										<th style="width:30px;">Pay</th>
-										<th>Invoice</th>
-										<th>Date</th>
-										<th style="text-align:right;">Grand Total</th>
-										<th style="text-align:right;">Outstanding</th>
-										<th style="text-align:right;width:130px;">Pay Amount</th>
-									</tr>
-								</thead>
-								<tbody id="qe-inv-rows">
-									${invoices.map((inv, i) => `
-										<tr>
-											<td style="text-align:center;">
-												<input type="checkbox" class="qe-inv-check" data-idx="${i}" checked>
-											</td>
-											<td>${frappe.utils.escape_html(inv.name)}</td>
-											<td>${frappe.datetime.str_to_user(inv.posting_date)}</td>
-											<td style="text-align:right;">${format_currency(inv.grand_total, cur)}</td>
-											<td style="text-align:right;color:#c0392b;">${format_currency(inv.outstanding_amount, cur)}</td>
-											<td>
-												<input type="number" class="qe-inv-amount form-control" data-idx="${i}"
-												       value="${inv.outstanding_amount}"
-												       max="${inv.outstanding_amount}" min="0" step="0.01"
-												       style="text-align:right;">
-											</td>
-										</tr>
-									`).join('')}
-								</tbody>
-								<tfoot>
-									<tr style="background:#fffbe6;font-weight:bold;">
-										<td colspan="5" style="text-align:right;">Total to pay:</td>
-										<td style="text-align:right;" id="qe-total">${format_currency(init_total, cur)}</td>
-									</tr>
-								</tfoot>
-							</table>
-						`
-					},
-					{ fieldtype: 'Section Break' },
+					{ fieldname: 'info', fieldtype: 'HTML',
+					  options: `<table class="table table-bordered" style="margin:0;">
+						<tr><td><b>Sales Invoice</b></td><td>${d.sales_invoice}</td></tr>
+						<tr><td><b>Outstanding</b></td><td style="color:#e74c3c;"><b>${format_currency(d.invoice_outstanding, d.currency)}</b></td></tr>
+						</table>` },
+					{ fieldname: 'paid_amount', fieldtype: 'Currency',
+					  label: 'Payment Amount', default: d.suggested_amount, reqd: 1 },
+					{ fieldname: 'col1', fieldtype: 'Column Break' },
 					{ fieldname: 'mode_of_payment', fieldtype: 'Link', options: 'Mode of Payment',
-					  label: __('Mode of Payment'), reqd: 1 },
+					  label: 'Mode of Payment', default: d.mode_of_payment, reqd: 1 },
+					{ fieldname: 'sb1', fieldtype: 'Section Break' },
 					{ fieldname: 'paid_to', fieldtype: 'Link', options: 'Account',
-					  label: __('Paid To (Bank/Cash)'), reqd: 1,
-					  get_query: () => ({
-						  filters: {
-							  account_type: ['in', ['Bank', 'Cash']],
-							  company: frm.doc.company,
-							  is_group: 0,
-						  }
-					  }) },
-					{ fieldtype: 'Column Break' },
-					{ fieldname: 'reference_no', fieldtype: 'Data', label: __('Reference No.') },
+					  label: 'Paid To Account', default: d.paid_to, reqd: 1 },
+					{ fieldname: 'col2', fieldtype: 'Column Break' },
+					{ fieldname: 'reference_no', fieldtype: 'Data',
+					  label: 'Reference No', default: d.reference_no_default },
 					{ fieldname: 'reference_date', fieldtype: 'Date',
-					  label: __('Reference Date'), default: frappe.datetime.get_today() },
+					  label: 'Reference Date', default: d.reference_date_default },
+					{ fieldname: 'sb2', fieldtype: 'Section Break' },
 					{ fieldname: 'auto_submit', fieldtype: 'Check',
-					  label: __('Auto-submit Payment Entry'), default: 1 },
+					  label: 'Auto-submit Payment Entry', default: 1 },
 				],
 				primary_action_label: __('Record Payment'),
 				primary_action: (values) => {
-					const allocations = [];
-					dialog.$wrapper.find('#qe-inv-rows tr').each(function(i) {
-						const checked = $(this).find('.qe-inv-check').is(':checked');
-						const amt = parseFloat($(this).find('.qe-inv-amount').val()) || 0;
-						if (checked && amt > 0) {
-							allocations.push({ invoice: invoices[i].name, amount: amt });
-						}
-					});
-					if (!allocations.length) {
-						frappe.msgprint(__('Select at least one invoice with a non-zero amount.'));
-						return;
-					}
 					dialog.hide();
 					frappe.call({
 						method: 'dagaar_catering.catering_management.controllers.catering_order.create_payment_entry',
 						args: {
 							catering_order: frm.doc.name,
-							allocations: JSON.stringify(allocations),
+							paid_amount: values.paid_amount,
 							mode_of_payment: values.mode_of_payment,
 							paid_to: values.paid_to,
 							reference_no: values.reference_no,
 							reference_date: values.reference_date,
 							auto_submit: values.auto_submit ? 1 : 0,
 						},
-						freeze: true,
-						freeze_message: __('Recording payment...'),
+						freeze: true, freeze_message: __('Recording Payment...'),
 						callback: (r) => {
 							if (r.message) _open_in_new_tab(frm, 'Payment Entry', r.message);
-						},
+						}
 					});
 				}
 			});
-
-			// Live recompute of total as user ticks/edits
-			setTimeout(() => {
-				dialog.$wrapper.find('.qe-inv-check, .qe-inv-amount').on('change keyup', () => {
-					let total = 0;
-					dialog.$wrapper.find('#qe-inv-rows tr').each(function() {
-						const checked = $(this).find('.qe-inv-check').is(':checked');
-						const amt = parseFloat($(this).find('.qe-inv-amount').val()) || 0;
-						if (checked) total += amt;
-					});
-					dialog.$wrapper.find('#qe-total').text(format_currency(total, cur));
-				});
-			}, 200);
 			dialog.show();
 		}
 	});
@@ -1361,18 +1085,3 @@ function _apply_void_freeze(frm) {
 		]), colors[frm.doc.status] || 'gray'
 	);
 }
-
-// ─── Live totals recalculation on table changes ─────────────────────────
-// Fires _recalc_totals whenever a row is added/removed/changed in the
-// menu_packages or items child tables.
-frappe.ui.form.on('Catering Order', {
-	items_add: function(frm) { _recalc_totals(frm); },
-	items_remove: function(frm) { _recalc_totals(frm); },
-	menu_packages_add: function(frm) { _recalc_totals(frm); },
-	menu_packages_remove: function(frm) { _recalc_totals(frm); },
-	discount_percent: function(frm) { _recalc_totals(frm); },
-	discount_amount: function(frm) { _recalc_totals(frm); },
-	total_taxes: function(frm) { _recalc_totals(frm); },
-	deposit_percent: function(frm) { _recalc_totals(frm); },
-	total_paid: function(frm) { _recalc_totals(frm); },
-});

@@ -2849,28 +2849,3 @@ def check_items_invoiced(catering_order, item_codes):
 	""", (catering_order, tuple(item_codes)), as_dict=True)
 	return [r.item_code for r in rows]
 
-@frappe.whitelist()
-def check_work_orders_complete(catering_order):
-	"""Return work-order completion status for this catering order.
-
-	A Work Order is considered "complete" when status='Completed'
-	(produced_qty == qty). Used by the Delivery Plan button gate to
-	prevent premature delivery planning.
-
-	Returns: { total, completed, all_complete }
-	"""
-	rows = frappe.db.sql("""
-		SELECT name, status, qty, produced_qty
-		FROM `tabWork Order`
-		WHERE catering_order = %s
-		  AND docstatus = 1
-	""", catering_order, as_dict=True)
-	total = len(rows)
-	completed = sum(1 for r in rows if (r.status or "") == "Completed"
-	                                or flt(r.produced_qty or 0) >= flt(r.qty or 0) > 0)
-	return {
-		"total": total,
-		"completed": completed,
-		"all_complete": (total > 0 and completed == total),
-	}
-

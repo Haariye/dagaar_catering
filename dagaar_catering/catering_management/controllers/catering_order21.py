@@ -90,13 +90,14 @@ def _compute_order_snapshot(doc):
 
 
 def _check_for_rebilling_required(doc):
-	"""Set requires_rebill=1 when the user has EDITED the order after invoicing.
+	"""Compare snapshot vs last_billed_snapshot. Set requires_rebill flag.
 
-	Compares a snapshot of (items + packages + totals) to last_billed_snapshot.
-	If they differ → user changed something → flag for Regenerate Bill.
+	DOES NOT update last_billed_snapshot — that's done ONLY in:
+	  - create_sales_invoice (when SI is first created)
+	  - update_sales_invoice (when user clicks Regenerate Bill)
 
-	This function ONLY compares. The snapshot is set ONLY when an SI is
-	created or regenerated (in create_sales_invoice / update_sales_invoice).
+	If last_billed_snapshot is empty and SI exists, we backfill it once
+	to the current snapshot (treats first-time case as 'no change').
 	"""
 	if not doc.get("sales_invoice"):
 		doc.requires_rebill = 0
@@ -106,123 +107,12 @@ def _check_for_rebilling_required(doc):
 	last = doc.get("last_billed_snapshot") or ""
 
 	if not last:
-		# Backfill once for legacy orders
+		# Backfill once — for legacy orders that pre-date snapshotting
 		doc.last_billed_snapshot = current
 		doc.requires_rebill = 0
 		return
 
 	doc.requires_rebill = 1 if current != last else 0
-
-
-
-def _get_package_sales_invoice(catering_order):
-	"""Return the package (non-additional-service) Sales Invoice for this order.
-
-	The "package SI" is the one that bills the catering order's main items
-	(packages + items child tables). Additional service SIs (setup fees,
-	late hours, etc.) are tracked separately and excluded.
-
-	Returns the SI name (oldest first if multiple exist), or None.
-	"""
-	try:
-		row = frappe.db.sql("""
-			SELECT name FROM `tabSales Invoice`
-			WHERE catering_order = %s
-			  AND docstatus IN (0, 1)
-			  AND IFNULL(is_additional_service, 0) = 0
-			  AND IFNULL(is_return, 0) = 0
-			ORDER BY creation ASC
-			LIMIT 1
-		""", catering_order)
-		return row[0][0] if row else None
-	except Exception:
-		return None
-
-
-def _get_net_billed_amount(catering_order):
-	"""Net PACKAGE billed amount = sum of (qty × rate) across all submitted
-	Sales Invoice Items for this order, EXCLUDING any item that:
-	  - Belongs to its SI which has is_additional_service=1, OR
-	  - Belongs to item_group='Service' (cross-check, in case the flag wasn't set)
-
-	This computes at the LINE level so a mixed credit note (packages + services
-	cancelled together) is handled correctly — only the package portion is subtracted.
-
-	Credit note line qty is already negative, so SUM(qty × rate) gives the net.
-	"""
-	try:
-		row = frappe.db.sql("""
-			SELECT IFNULL(SUM(sii.qty * sii.rate), 0) AS net_billed
-			FROM `tabSales Invoice Item` sii
-			INNER JOIN `tabSales Invoice` si ON si.name = sii.parent
-			LEFT JOIN `tabItem` i ON i.name = sii.item_code
-			WHERE si.catering_order = %s
-			  AND si.docstatus = 1
-			  AND IFNULL(si.is_additional_service, 0) = 0
-			  AND IFNULL(i.item_group, '') != 'Service'
-		""", catering_order)
-		return flt(row[0][0]) if row else 0
-	except Exception:
-		return 0
-
-
-
-@frappe.whitelist()
-def _heal_sales_invoice_field(catering_order):
-	"""Self-healing: if co.sales_invoice happens to point to a service SI
-	(from the old buggy hook), clear it. The real package SI is found via
-	_get_package_sales_invoice anyway.
-	"""
-	try:
-		current = frappe.db.get_value("Catering Order", catering_order, "sales_invoice")
-		if not current:
-			return
-		is_service = frappe.db.get_value("Sales Invoice", current,
-			"is_additional_service") or 0
-		if is_service:
-			# This field shouldn't point to a service SI. Find the real package SI.
-			pkg = _get_package_sales_invoice(catering_order)
-			frappe.db.set_value("Catering Order", catering_order,
-				"sales_invoice", pkg, update_modified=False)
-	except Exception:
-		pass
-
-
-@frappe.whitelist()
-def get_billing_status(catering_order):
-	"""Return billing snapshot for the UI — drives SI + Regenerate Bill visibility.
-
-	Returns dict:
-	  order_total: total_order_value (current after amendments)
-	  net_billed: SUM(SI) - SUM(credit notes), submitted only
-	  unbilled_amount: order_total - net_billed
-	  show_sales_invoice_btn: bool  (unbilled > 0.01 means more to bill)
-	  show_regenerate_btn: bool     (an SI exists AND amounts differ)
-	  currency
-	"""
-	_heal_sales_invoice_field(catering_order)
-	order = frappe.db.get_value("Catering Order", catering_order,
-		["total_order_value", "currency", "sales_order"],
-		as_dict=True) or {}
-	order_total = flt(order.get("total_order_value"))
-	net_billed = _get_net_billed_amount(catering_order)
-	unbilled = order_total - net_billed
-
-	# Use the actual package SI (not the stored field) — additional service SIs
-	# do not count as "having a Sales Invoice" for the package billing flow.
-	package_si = _get_package_sales_invoice(catering_order)
-
-	return {
-		"order_total": order_total,
-		"net_billed": net_billed,
-		"unbilled_amount": unbilled,
-		"has_sales_order": bool(order.get("sales_order")),
-		"has_sales_invoice": bool(package_si),
-		"package_sales_invoice": package_si,
-		"show_sales_invoice_btn": bool(order.get("sales_order")) and not package_si and unbilled > 0.01,
-		"show_regenerate_btn": bool(package_si) and abs(unbilled) > 0.01,
-		"currency": order.get("currency"),
-	}
 
 
 
@@ -558,21 +448,11 @@ def _calculate_totals(doc):
 
 	doc.total_guests = total_guests
 
-	# Recompute item totals.
-	# Rule: if qty_per_guest AND guest_count are both set, derive total_qty.
-	# Otherwise (e.g. user added a one-off item row directly), respect the
-	# total_qty already on the row — don't zero it out.
+	# Recompute item totals
 	subtotal = 0
 	for item in (doc.items or []):
-		qpg = flt(item.qty_per_guest or 0)
 		gc = flt(item.guest_count or 0)
-		if qpg > 0 and gc > 0:
-			item.total_qty = qpg * gc
-		elif not flt(item.total_qty):
-			# Last resort: if user gave qty_per_guest only, multiply by order's total_guests
-			if qpg > 0 and total_guests > 0:
-				item.total_qty = qpg * total_guests
-				item.guest_count = total_guests
+		item.total_qty = flt(item.qty_per_guest or 0) * gc
 		item.amount = flt(item.total_qty) * flt(item.rate or 0)
 		subtotal += flt(item.amount)
 
@@ -626,19 +506,6 @@ def _validate_guests(doc):
 	if not (doc.get("menu_packages") or []):
 		frappe.throw(_("At least one menu package row is required."),
 			title=_("Menu Packages Missing"))
-
-	# Check for duplicate menu_package values across rows
-	seen = {}
-	for idx, p in enumerate(doc.get("menu_packages") or [], start=1):
-		if not p.menu_package:
-			continue
-		if p.menu_package in seen:
-			frappe.throw(
-				_("Menu Package <b>{0}</b> appears in rows #{1} and #{2}. "
-				  "Combine the guest counts into a single row instead.").format(
-					p.menu_package, seen[p.menu_package], idx),
-				title=_("Duplicate Package"))
-		seen[p.menu_package] = idx
 
 	errors = []
 
@@ -1121,9 +988,8 @@ def create_sales_order(catering_order, auto_submit=0):
 def get_sales_invoice_defaults(catering_order):
 	"""Return defaults for the Sales Invoice popup dialog."""
 	co = frappe.get_doc("Catering Order", catering_order)
-	existing_pkg_si = _get_package_sales_invoice(catering_order)
-	if existing_pkg_si:
-		return {"error": f"Package Sales Invoice {existing_pkg_si} already exists for this order."}
+	if co.sales_invoice:
+		return {"error": f"Sales Invoice {co.sales_invoice} already exists for this order."}
 	if not co.sales_order:
 		return {"error": "Create a Sales Order first."}
 
@@ -1144,11 +1010,8 @@ def create_sales_invoice(catering_order, additional_discount=None, auto_submit=0
 	"""Create Sales Invoice with optional additional discount."""
 	co = frappe.get_doc("Catering Order", catering_order)
 	_check_approval_gate(co)
-	# Block ONLY if a non-additional-service Sales Invoice already exists.
-	# Additional service SIs (setup fees, late hours) don't block package billing.
-	existing_pkg_si = _get_package_sales_invoice(catering_order)
-	if existing_pkg_si:
-		frappe.throw(_("Sales Invoice {0} already exists for this order.").format(existing_pkg_si))
+	if co.sales_invoice:
+		frappe.throw(_("Sales Invoice {0} already exists.").format(co.sales_invoice))
 
 	si = _create_doc_with_naming("Sales Invoice")
 	si.customer = co.customer
@@ -1256,138 +1119,97 @@ def get_payment_defaults(catering_order):
 
 
 @frappe.whitelist()
-def get_unpaid_invoices(catering_order):
-	"""All submitted, non-return Sales Invoices for this order with
-	outstanding > 0. Ordered oldest first (FIFO).
-
-	Drives the Payment Entry dialog's invoice picker. Includes package SIs,
-	supplementary SIs, AND additional service SIs.
-	"""
-	rows = frappe.db.sql("""
-		SELECT name, posting_date, grand_total, outstanding_amount, currency,
-		       is_return, debit_to
-		FROM `tabSales Invoice`
-		WHERE catering_order = %s
-		  AND docstatus = 1
-		  AND outstanding_amount > 0.01
-		  AND IFNULL(is_return, 0) = 0
-		ORDER BY posting_date ASC, creation ASC
-	""", catering_order, as_dict=True)
-	return rows
-
-
-@frappe.whitelist()
-def create_payment_entry(catering_order, allocations=None, mode_of_payment=None,
-                          paid_to=None, reference_no=None, reference_date=None,
-                          auto_submit=0, paid_amount=None):
-	"""Create Payment Entry that reconciles against ONE OR MORE Sales Invoices.
-
-	`allocations` JSON: [{"invoice": "ACC-SINV-...", "amount": 50.0}, ...]
-	Each amount is capped to the invoice's outstanding. Falls back to legacy
-	co.sales_invoice + paid_amount if allocations is not provided.
-
-	This is the multi-invoice flow that lets the user pick which unpaid SIs
-	to pay (package, supplementary, additional service).
-	"""
-	import json as _json
-
+def create_payment_entry(catering_order, paid_amount=None, mode_of_payment=None,
+						 paid_to=None, reference_no=None, reference_date=None,
+						 auto_submit=0):
+	"""Create Payment Entry that reconciles against the Sales Invoice."""
 	co = frappe.get_doc("Catering Order", catering_order)
 	_check_approval_gate(co)
+	if not co.sales_invoice:
+		frappe.throw(_("Create the Sales Invoice first. Payments must reconcile against an Invoice."))
 
-	# Parse allocations
-	if isinstance(allocations, str):
-		try:
-			allocations = _json.loads(allocations)
-		except Exception:
-			allocations = None
-
-	if not allocations:
-		# Legacy fallback — single SI
-		if not co.sales_invoice:
-			frappe.throw(_("Create the Sales Invoice first."))
-		allocations = [{
-			"invoice": co.sales_invoice,
-			"amount": flt(paid_amount) if paid_amount else None,
-		}]
-
-	if not allocations:
-		frappe.throw(_("No invoices selected for payment."))
+	si = frappe.get_doc("Sales Invoice", co.sales_invoice)
+	if si.docstatus != 1:
+		frappe.throw(_("Sales Invoice must be submitted before recording payments."))
+	if flt(si.outstanding_amount) <= 0:
+		frappe.throw(_("Sales Invoice {0} is already fully paid.").format(co.sales_invoice))
 
 	settings = _get_settings()
-	total_amount = 0
-	si_refs = []
-	currency = None
-	debit_to = None
 
-	for alloc in allocations:
-		si_name = alloc.get("invoice")
-		if not si_name:
-			continue
-		si = frappe.get_doc("Sales Invoice", si_name)
-		if si.docstatus != 1:
-			frappe.throw(_("Sales Invoice {0} not submitted.").format(si_name))
-		if flt(si.outstanding_amount) <= 0:
-			frappe.throw(_("Sales Invoice {0} already fully paid.").format(si_name))
-
-		amount = flt(alloc.get("amount"))
-		if amount <= 0:
-			amount = flt(si.outstanding_amount)
-		if amount > flt(si.outstanding_amount):
-			frappe.throw(_("Amount {0} for {1} exceeds outstanding {2}.").format(
-				amount, si_name, si.outstanding_amount))
-
-		currency = currency or si.currency
-		debit_to = debit_to or si.debit_to
-		total_amount += amount
-		si_refs.append({"si": si, "amount": amount})
-
-	if total_amount <= 0:
-		frappe.throw(_("Total payment must be greater than zero."))
+	amount = flt(paid_amount) if paid_amount else flt(si.outstanding_amount)
+	if amount <= 0:
+		frappe.throw(_("Payment amount must be greater than zero."))
+	if amount > flt(si.outstanding_amount):
+		frappe.throw(_("Payment amount {0} exceeds outstanding {1}.").format(
+			amount, si.outstanding_amount))
 
 	if not mode_of_payment:
 		mode_of_payment = (settings.default_mode_of_payment if settings else None) or \
 			frappe.db.get_value("Mode of Payment", {"enabled": 1}, "name") or \
 			frappe.db.get_value("Mode of Payment", {}, "name")
+	if not mode_of_payment:
+		frappe.throw(_("No Mode of Payment configured. Set Default Mode of Payment in Catering Settings."))
 
 	if not paid_to:
-		paid_to = co.advance_account or \
-			(settings.default_bank_account if settings else None) or \
-			(settings.default_advance_account if settings else None) or \
-			frappe.db.get_value("Company", co.company, "default_bank_account") or \
+		if co.advance_account:
+			paid_to = co.advance_account
+		elif settings and settings.default_bank_account:
+			paid_to = settings.default_bank_account
+		elif settings and settings.default_advance_account:
+			paid_to = settings.default_advance_account
+		else:
+			try:
+				mop_doc = frappe.get_doc("Mode of Payment", mode_of_payment)
+				for row in (mop_doc.accounts or []):
+					if row.company == co.company:
+						paid_to = row.default_account
+						break
+			except Exception:
+				pass
+	if not paid_to:
+		paid_to = frappe.db.get_value("Company", co.company, "default_bank_account") or \
 			frappe.db.get_value("Company", co.company, "default_cash_account")
 	if not paid_to:
-		frappe.throw(_("Could not resolve a Paid To account."))
+		frappe.throw(_("Could not determine Paid To account. Set 'Default Bank/Cash Account' in Catering Settings."))
+
+	paid_from = si.debit_to or \
+		(settings.default_receivable_account if settings else None) or \
+		frappe.db.get_value("Company", co.company, "default_receivable_account")
+
+	company_currency = frappe.db.get_value("Company", co.company, "default_currency") or "USD"
+	order_currency = co.currency or company_currency
 
 	pe = _create_doc_with_naming("Payment Entry")
 	pe.payment_type = "Receive"
 	pe.party_type = "Customer"
 	pe.party = co.customer
+	pe.posting_date = reference_date or today()
 	pe.company = co.company
-	pe.posting_date = today()
-	pe.mode_of_payment = mode_of_payment
-	pe.paid_from = debit_to
-	pe.paid_to = paid_to
-	pe.paid_from_account_currency = currency
-	pe.paid_to_account_currency = frappe.db.get_value("Account", paid_to,
-		"account_currency") or currency
-	pe.received_amount = total_amount
-	pe.paid_amount = total_amount
-	pe.source_exchange_rate = 1
-	pe.target_exchange_rate = 1
-	pe.project = co.project
 	pe.cost_center = co.cost_center
-	pe.catering_order = catering_order
-	pe.reference_no = reference_no or f"PMT-{co.name}"
+	pe.project = co.project
+	pe.catering_order = co.name
+	pe.mode_of_payment = mode_of_payment
+	pe.paid_to = paid_to
+	if paid_from:
+		pe.paid_from = paid_from
+	pe.paid_from_account_currency = order_currency
+	pe.paid_to_account_currency = order_currency
+	pe.source_exchange_rate = 1.0
+	pe.target_exchange_rate = 1.0
+	pe.paid_amount = amount
+	pe.received_amount = amount
+	pe.base_paid_amount = amount
+	pe.base_received_amount = amount
+	pe.reference_no = reference_no or f"PAY-{co.name}"
 	pe.reference_date = reference_date or today()
 
-	for ref in si_refs:
-		pe.append("references", {
-			"reference_doctype": "Sales Invoice",
-			"reference_name": ref["si"].name,
-			"total_amount": flt(ref["si"].grand_total),
-			"outstanding_amount": flt(ref["si"].outstanding_amount),
-			"allocated_amount": ref["amount"],
-		})
+	pe.append("references", {
+		"reference_doctype": "Sales Invoice",
+		"reference_name": co.sales_invoice,
+		"total_amount": flt(si.grand_total),
+		"outstanding_amount": flt(si.outstanding_amount),
+		"allocated_amount": amount,
+	})
 
 	pe.flags.ignore_permissions = True
 	pe.insert()
@@ -1396,14 +1218,16 @@ def create_payment_entry(catering_order, allocations=None, mode_of_payment=None,
 		try:
 			pe.submit()
 		except Exception as e:
-			frappe.msgprint(_("PE {0} created (Draft). Submit failed: {1}").format(
+			frappe.msgprint(_("Payment Entry {0} created but auto-submit failed: {1}").format(
 				pe.name, str(e)[:200]), indicator="orange")
+			return pe.name
 
-	_log_activity(co, "Payment Received",
-		f"PE {pe.name}: {total_amount} {currency} across {len(si_refs)} invoice(s)",
-		"Payment Entry", pe.name)
+	_log_activity(co, "Document Created", f"Payment Entry {pe.name} created", "Payment Entry", pe.name)
+	frappe.msgprint(_("Payment Entry {0} {1}").format(
+		get_link_to_form("Payment Entry", pe.name),
+		"created and submitted" if cint(auto_submit) else "created — review and submit"
+	), indicator="green", alert=True)
 	return pe.name
-
 
 
 def _get_total_paid(catering_order):
@@ -1588,6 +1412,30 @@ def _calculate_raw_materials(co):
 
 
 @frappe.whitelist()
+def _get_manufactured_qty_by_item(catering_order):
+	"""Return {item_code: total_fg_qty} from submitted Manufacture Stock Entries.
+
+	FG qty = positive SLE for the produced item. Single source for delivery qty.
+	Called ONCE per workflow step; reuse the returned dict.
+	"""
+	try:
+		rows = frappe.db.sql("""
+			SELECT sle.item_code, IFNULL(SUM(sle.actual_qty), 0) AS qty
+			FROM `tabStock Ledger Entry` sle
+			INNER JOIN `tabStock Entry` se ON se.name = sle.voucher_no
+			WHERE sle.voucher_type = 'Stock Entry'
+			  AND se.docstatus = 1
+			  AND se.catering_order = %s
+			  AND se.purpose = 'Manufacture'
+			  AND sle.actual_qty > 0
+			GROUP BY sle.item_code
+		""", catering_order, as_dict=True)
+		return {r.item_code: flt(r.qty) for r in rows}
+	except Exception:
+		return {}
+
+
+@frappe.whitelist()
 def create_delivery_plan(catering_order):
 	"""Create Delivery Plan for the event day."""
 	co = frappe.get_doc("Catering Order", catering_order)
@@ -1608,11 +1456,15 @@ def create_delivery_plan(catering_order):
 	dp.company = co.company
 	dp.status = "Planned"
 
+	# Use Stock Entry (Manufacture) actuals so delivery reflects physical output.
+	# Falls back to order qty if no SE yet exists.
+	manufactured = _get_manufactured_qty_by_item(catering_order)
 	for it in co.items:
+		actual_qty = manufactured.get(it.item_code, flt(it.total_qty))
 		dp.append("delivery_items", {
 			"item_code": it.item_code,
 			"item_name": it.item_name,
-			"qty": flt(it.total_qty),
+			"qty": actual_qty,
 			"uom": it.uom,
 		})
 
@@ -2014,10 +1866,6 @@ def update_sales_invoice(catering_order):
 	This approach preserves Sales Order, Work Orders, payments, and audit trail. Nothing is cancelled.
 	"""
 	co = frappe.get_doc("Catering Order", catering_order)
-	pkg_si = _get_package_sales_invoice(catering_order)
-	if not pkg_si:
-		frappe.throw(_("No package Sales Invoice exists yet. Create one first."))
-	co.sales_invoice = pkg_si  # ensure we work with the package SI, not a service SI
 	if not co.sales_invoice:
 		frappe.throw(_("This order has no Sales Invoice yet. Create one first."))
 
@@ -2059,48 +1907,19 @@ def update_sales_invoice(catering_order):
 			billed_map[code] = {"qty": flt(sii.qty), "rate": flt(sii.rate),
 			                    "item_name": sii.item_name, "uom": sii.uom}
 
-	# Include ALL prior package-related SIs for this order:
-	# - Supplementary invoices (submitted, non-return, non-service)
-	# - Credit notes (submitted, is_return=1, non-service) — their qty is negative
-	# This guarantees billed_map reflects the FULL net billed-so-far per item.
-	# Excludes additional service SIs (is_additional_service=1).
-	try:
-		has_flag_col = frappe.db.sql("""
-			SELECT COUNT(*) FROM information_schema.columns
-			WHERE table_schema = DATABASE()
-			  AND table_name = 'tabSales Invoice'
-			  AND column_name = 'is_additional_service'
-		""")[0][0] > 0
-	except Exception:
-		has_flag_col = False
-
-	service_filter = "AND IFNULL(si.is_additional_service, 0) = 0" if has_flag_col else ""
-	prior_supps = frappe.db.sql(f"""
-		SELECT sii.item_code, sii.qty, sii.rate, sii.item_name, sii.uom,
-		       si.is_return
+	# Also include supplementary invoices that already exist for this order
+	prior_supps = frappe.db.sql("""
+		SELECT sii.item_code, sii.qty
 		FROM `tabSales Invoice Item` sii
 		INNER JOIN `tabSales Invoice` si ON si.name = sii.parent
 		WHERE si.catering_order = %s
 		  AND si.name != %s
 		  AND si.docstatus = 1
-		  {service_filter}
 	""", (catering_order, si.name), as_dict=True)
-
 	for row in prior_supps:
 		code = row.item_code
-		# CRITICAL: add this item to billed_map even if it wasn't in the main SI.
-		# (Previously this branch was guarded by `if code in billed_map` — which
-		# caused the bug: new items from supplementaries got missed → next
-		# Regenerate Bill click re-added them as a fresh supplementary.)
 		if code in billed_map:
 			billed_map[code]["qty"] += flt(row.qty)
-		else:
-			billed_map[code] = {
-				"qty": flt(row.qty),
-				"rate": flt(row.rate),
-				"item_name": row.item_name,
-				"uom": row.uom,
-			}
 
 	# Build current expected quantities
 	current_map = {}
@@ -2116,15 +1935,10 @@ def update_sales_invoice(catering_order):
 				"uom": it.uom,
 			}
 
-	# Compute the DIFFERENCE per item — but ONLY for items that are part of
-	# the catering order's items table. Anything billed that ISN'T in the order
-	# (e.g. additional service items billed via the "Additional Service" button)
-	# is intentionally ignored here — those have their own lifecycle and must
-	# not trigger a credit note from Regenerate Bill.
-	order_item_codes = set(current_map.keys())
-
+	# Compute the DIFFERENCE per item
 	diffs = []  # list of {item_code, qty_diff (signed), rate, item_name, uom}
-	for code in order_item_codes:
+	all_codes = set(billed_map.keys()) | set(current_map.keys())
+	for code in all_codes:
 		billed_qty = flt(billed_map.get(code, {}).get("qty", 0))
 		current_qty = flt(current_map.get(code, {}).get("qty", 0))
 		diff = current_qty - billed_qty
@@ -2296,6 +2110,10 @@ def create_delivery_note_from_plan(delivery_plan):
 
 	# Load the Sales Invoice items if available — we link DN items to SI items so the DN
 	# does NOT re-bill what's already invoiced. ERPNext handles this via against_sales_invoice + si_detail.
+	# Fetch SE manufactured qty ONCE for the whole DN build
+	manufactured = _get_manufactured_qty_by_item(dp.catering_order) if dp.catering_order else {}
+	divergence_warnings = []
+
 	si_items_by_code = {}
 	si_name = None
 	if co and co.sales_invoice:
@@ -2328,11 +2146,23 @@ def create_delivery_note_from_plan(delivery_plan):
 		if item_code in si_items_by_code:
 			si_info = si_items_by_code[item_code]
 			if si_info["remaining"] <= 0:
-				# Already fully delivered/billed
 				items_skipped.append(f"{item_code} (already delivered)")
 				continue
-			# Cap to remaining qty
-			qty_to_deliver = min(qty_to_deliver, si_info["remaining"])
+			# Hybrid cap: qty_to_deliver = min(planned, SE manufactured, SI remaining)
+			si_remaining = flt(si_info["remaining"])
+			se_actual = flt(manufactured.get(item_code, 0))
+			si_billed = flt(si_info["si_qty"])
+			effective_actual = se_actual if se_actual > 0 else si_remaining
+			qty_to_deliver = min(qty_to_deliver, si_remaining, effective_actual)
+
+			# Collect mismatch warning (manufactured vs billed)
+			if se_actual > 0 and abs(se_actual - si_billed) > 0.001:
+				divergence_warnings.append({
+					"item": item_code,
+					"manufactured": se_actual,
+					"billed": si_billed,
+					"delivering": qty_to_deliver,
+				})
 
 			dn.append("items", {
 				"item_code": item_code,
@@ -2380,6 +2210,24 @@ def create_delivery_note_from_plan(delivery_plan):
 		if items_skipped:
 			note += f" (skipped {len(items_skipped)} already-billed items)"
 		_log_activity(co, "Document Created", note, "Delivery Note", dn.name)
+
+	# Surface SE vs SI divergence warnings (non-blocking)
+	if divergence_warnings:
+		lines = ["<b>Manufactured vs Billed mismatch:</b>"]
+		for dv in divergence_warnings[:10]:
+			delta = dv["manufactured"] - dv["billed"]
+			direction = "extra" if delta > 0 else "short"
+			lines.append(
+				f"&bull; <b>{dv['item']}</b>: made {dv['manufactured']:g}, "
+				f"billed {dv['billed']:g}, delivering {dv['delivering']:g} "
+				f"({abs(delta):g} {direction})"
+			)
+		lines.append(
+			"<br>Click <b>Regenerate Bill</b> to align the Sales Invoice with "
+			"the manufactured quantity, OR adjust the next Manufacture Stock Entry."
+		)
+		frappe.msgprint("<br>".join(lines), title=_("Quantity Mismatch"),
+			indicator="orange")
 
 	return dn.name
 
@@ -2711,7 +2559,6 @@ def create_additional_service_invoice(catering_order, service_item, qty, rate, d
 		"description": description or item_name,
 	})
 
-	si.is_additional_service = 1
 	si.flags.ignore_permissions = True
 	si.insert()
 	try:
@@ -2819,58 +2666,4 @@ def get_items_for_package(menu_package):
 		return rows
 	except Exception:
 		return []
-
-@frappe.whitelist()
-def check_items_invoiced(catering_order, item_codes):
-	"""Return list of item codes that are already billed on a submitted
-	non-additional-service Sales Invoice for this catering_order.
-
-	Used by JS to block menu_package row removal when its items have been
-	invoiced (books-already-out-of-sync protection).
-	"""
-	import json as _json
-	if isinstance(item_codes, str):
-		try:
-			item_codes = _json.loads(item_codes)
-		except Exception:
-			item_codes = [item_codes]
-	if not item_codes:
-		return []
-
-	rows = frappe.db.sql("""
-		SELECT DISTINCT sii.item_code
-		FROM `tabSales Invoice Item` sii
-		INNER JOIN `tabSales Invoice` si ON si.name = sii.parent
-		WHERE si.catering_order = %s
-		  AND si.docstatus = 1
-		  AND IFNULL(si.is_additional_service, 0) = 0
-		  AND IFNULL(si.is_return, 0) = 0
-		  AND sii.item_code IN %s
-	""", (catering_order, tuple(item_codes)), as_dict=True)
-	return [r.item_code for r in rows]
-
-@frappe.whitelist()
-def check_work_orders_complete(catering_order):
-	"""Return work-order completion status for this catering order.
-
-	A Work Order is considered "complete" when status='Completed'
-	(produced_qty == qty). Used by the Delivery Plan button gate to
-	prevent premature delivery planning.
-
-	Returns: { total, completed, all_complete }
-	"""
-	rows = frappe.db.sql("""
-		SELECT name, status, qty, produced_qty
-		FROM `tabWork Order`
-		WHERE catering_order = %s
-		  AND docstatus = 1
-	""", catering_order, as_dict=True)
-	total = len(rows)
-	completed = sum(1 for r in rows if (r.status or "") == "Completed"
-	                                or flt(r.produced_qty or 0) >= flt(r.qty or 0) > 0)
-	return {
-		"total": total,
-		"completed": completed,
-		"all_complete": (total > 0 and completed == total),
-	}
 

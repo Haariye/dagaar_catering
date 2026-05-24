@@ -92,10 +92,7 @@ doc_events = {
     # Live Cost Sheet refresh hooks — keep Cost Sheet absorbing expenses
     # ────────────────────────────────────────────────────────────────────
     "Stock Entry": {
-        "validate": [
-            "dagaar_catering.catering_management.controllers.linkers.propagate_catering_order_to_stock_entry",
-            "dagaar_catering.catering_management.controllers.linkers.set_stock_entry_expense_account",
-        ],
+        "validate": "dagaar_catering.catering_management.controllers.linkers.propagate_catering_order_to_stock_entry",
     },
 }
 

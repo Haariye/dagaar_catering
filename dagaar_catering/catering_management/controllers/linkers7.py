@@ -116,11 +116,6 @@ def _project_naming_series():
 
 def update_si_status(doc, method=None):
 	"""Sales Invoice submit/cancel → update Catering Order, recompute totals."""
-	# SKIP additional service invoices — they have their own life and
-	# must NOT touch co.sales_invoice (which is reserved for the package SI).
-	if getattr(doc, "is_additional_service", 0):
-		return
-
 	if not doc.get("catering_order"):
 		return
 	try:
@@ -350,20 +345,3 @@ def propagate_catering_order_to_stock_entry(doc, method=None):
 		except Exception:
 			pass
 
-
-def set_stock_entry_expense_account(doc, method=None):
-	"""Override expense_account on each item row when Stock Entry is linked
-	to a catering_order. Routes consumption through Stock Adjustment to
-	avoid COGS double-count (COGS posts only from Delivery Note).
-	"""
-	if not getattr(doc, "catering_order", None):
-		return
-	try:
-		settings = frappe.get_single("Catering Settings")
-		sa_account = settings.get("default_stock_adjustment_account")
-		if not sa_account:
-			return  # not configured — leave default ERPNext behavior
-		for row in (doc.get("items") or []):
-			row.expense_account = sa_account
-	except Exception:
-		pass

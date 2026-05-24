@@ -144,12 +144,8 @@ def _check_outstanding(doc):
 	if not outstanding_rows:
 		return  # all paid
 
-	# Read the bypass flag from the parent Catering Order (where the manager
-	# decides if this customer is allowed to close with outstanding balance).
-	co_bypass = frappe.db.get_value("Catering Order", doc.catering_order,
-	                                "bypass_outstanding") or 0
-	if co_bypass:
-		# Manager has explicitly authorized customer-credit close on the order
+	if doc.get("bypass_outstanding") or doc.get("bypass_deposit"):
+		# Manager has explicitly bypassed
 		return
 
 	is_mgr = any(r in frappe.get_roles() for r in
@@ -167,14 +163,13 @@ def _check_outstanding(doc):
 	msg += "<br>" + "<br>".join(lines) + "<br><br>"
 
 	if is_mgr:
-		msg += _("✅ <b>You can bypass this:</b> open the Catering Order <b>{0}</b>, "
-		         "tick <b>'Bypass Outstanding on Close (Manager Only)'</b>, save it, "
-		         "then come back and submit this Closing Sheet. "
-		         "The outstanding amount stays in the customer's receivable for later collection.").format(
-				doc.catering_order)
+		msg += _("✅ <b>You can bypass this:</b> tick the <b>'Bypass Outstanding Balance (Manager Only)'</b> "
+		         "checkbox on this Closing Sheet, save, then submit again. "
+		         "The outstanding amount will remain in the customer's receivable account "
+		         "for later collection.")
 	else:
 		msg += _("Collect the outstanding payments — OR — ask a Catering Manager to tick "
-		         "<b>'Bypass Outstanding on Close'</b> on the Catering Order for a customer-credit close.")
+		         "<b>'Bypass Outstanding Balance'</b> on the Closing Sheet for a customer-credit close.")
 
 	frappe.throw(msg, title=_("Outstanding Balance"))
 

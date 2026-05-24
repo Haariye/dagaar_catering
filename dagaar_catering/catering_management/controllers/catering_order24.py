@@ -140,31 +140,59 @@ def _get_package_sales_invoice(catering_order):
 
 
 def _get_net_billed_amount(catering_order):
-	"""Net PACKAGE billed amount = sum of (qty × rate) across all submitted
-	Sales Invoice Items for this order, EXCLUDING any item that:
-	  - Belongs to its SI which has is_additional_service=1, OR
-	  - Belongs to item_group='Service' (cross-check, in case the flag wasn't set)
+	"""Return the net PACKAGE billed amount for a Catering Order.
 
-	This computes at the LINE level so a mixed credit note (packages + services
-	cancelled together) is handled correctly — only the package portion is subtracted.
+	net_billed = SUM(submitted SI grand_total) - SUM(credit notes)
+	Excludes additional service SIs (is_additional_service=1).
 
-	Credit note line qty is already negative, so SUM(qty × rate) gives the net.
+	One SQL query. Called from:
+	  - _check_for_rebilling_required (to set the flag)
+	  - get_billing_status (whitelisted, for the form/JS)
 	"""
 	try:
-		row = frappe.db.sql("""
-			SELECT IFNULL(SUM(sii.qty * sii.rate), 0) AS net_billed
-			FROM `tabSales Invoice Item` sii
-			INNER JOIN `tabSales Invoice` si ON si.name = sii.parent
-			LEFT JOIN `tabItem` i ON i.name = sii.item_code
-			WHERE si.catering_order = %s
-			  AND si.docstatus = 1
-			  AND IFNULL(si.is_additional_service, 0) = 0
-			  AND IFNULL(i.item_group, '') != 'Service'
-		""", catering_order)
+		# Defensive: if the is_additional_service column hasn't been added yet,
+		# fall back to a query without the filter. The patch will tag SIs later.
+		col_exists = frappe.db.sql("""
+			SELECT COUNT(*) FROM information_schema.columns
+			WHERE table_schema = DATABASE()
+			  AND table_name = 'tabSales Invoice'
+			  AND column_name = 'is_additional_service'
+		""")[0][0] > 0
+
+		if col_exists:
+			row = frappe.db.sql("""
+				SELECT IFNULL(SUM(
+					CASE WHEN is_return = 1 THEN -ABS(grand_total) ELSE grand_total END
+				), 0) AS net_billed
+				FROM `tabSales Invoice`
+				WHERE catering_order = %s
+				  AND docstatus = 1
+				  AND IFNULL(is_additional_service, 0) = 0
+			""", catering_order)
+		else:
+			# Fallback: detect "service-only" SIs by item_group=Service
+			row = frappe.db.sql("""
+				SELECT IFNULL(SUM(
+					CASE WHEN si.is_return = 1 THEN -ABS(si.grand_total) ELSE si.grand_total END
+				), 0) AS net_billed
+				FROM `tabSales Invoice` si
+				WHERE si.catering_order = %s
+				  AND si.docstatus = 1
+				  AND si.name NOT IN (
+					  SELECT DISTINCT sii.parent
+					  FROM `tabSales Invoice Item` sii
+					  INNER JOIN `tabItem` i ON i.name = sii.item_code
+					  WHERE i.item_group = 'Service'
+					  GROUP BY sii.parent
+					  HAVING COUNT(*) = (
+						  SELECT COUNT(*) FROM `tabSales Invoice Item` x
+						  WHERE x.parent = sii.parent
+					  )
+				  )
+			""", catering_order)
 		return flt(row[0][0]) if row else 0
 	except Exception:
 		return 0
-
 
 
 @frappe.whitelist()
@@ -558,21 +586,11 @@ def _calculate_totals(doc):
 
 	doc.total_guests = total_guests
 
-	# Recompute item totals.
-	# Rule: if qty_per_guest AND guest_count are both set, derive total_qty.
-	# Otherwise (e.g. user added a one-off item row directly), respect the
-	# total_qty already on the row — don't zero it out.
+	# Recompute item totals
 	subtotal = 0
 	for item in (doc.items or []):
-		qpg = flt(item.qty_per_guest or 0)
 		gc = flt(item.guest_count or 0)
-		if qpg > 0 and gc > 0:
-			item.total_qty = qpg * gc
-		elif not flt(item.total_qty):
-			# Last resort: if user gave qty_per_guest only, multiply by order's total_guests
-			if qpg > 0 and total_guests > 0:
-				item.total_qty = qpg * total_guests
-				item.guest_count = total_guests
+		item.total_qty = flt(item.qty_per_guest or 0) * gc
 		item.amount = flt(item.total_qty) * flt(item.rate or 0)
 		subtotal += flt(item.amount)
 
@@ -2059,48 +2077,19 @@ def update_sales_invoice(catering_order):
 			billed_map[code] = {"qty": flt(sii.qty), "rate": flt(sii.rate),
 			                    "item_name": sii.item_name, "uom": sii.uom}
 
-	# Include ALL prior package-related SIs for this order:
-	# - Supplementary invoices (submitted, non-return, non-service)
-	# - Credit notes (submitted, is_return=1, non-service) — their qty is negative
-	# This guarantees billed_map reflects the FULL net billed-so-far per item.
-	# Excludes additional service SIs (is_additional_service=1).
-	try:
-		has_flag_col = frappe.db.sql("""
-			SELECT COUNT(*) FROM information_schema.columns
-			WHERE table_schema = DATABASE()
-			  AND table_name = 'tabSales Invoice'
-			  AND column_name = 'is_additional_service'
-		""")[0][0] > 0
-	except Exception:
-		has_flag_col = False
-
-	service_filter = "AND IFNULL(si.is_additional_service, 0) = 0" if has_flag_col else ""
-	prior_supps = frappe.db.sql(f"""
-		SELECT sii.item_code, sii.qty, sii.rate, sii.item_name, sii.uom,
-		       si.is_return
+	# Also include supplementary invoices that already exist for this order
+	prior_supps = frappe.db.sql("""
+		SELECT sii.item_code, sii.qty
 		FROM `tabSales Invoice Item` sii
 		INNER JOIN `tabSales Invoice` si ON si.name = sii.parent
 		WHERE si.catering_order = %s
 		  AND si.name != %s
 		  AND si.docstatus = 1
-		  {service_filter}
 	""", (catering_order, si.name), as_dict=True)
-
 	for row in prior_supps:
 		code = row.item_code
-		# CRITICAL: add this item to billed_map even if it wasn't in the main SI.
-		# (Previously this branch was guarded by `if code in billed_map` — which
-		# caused the bug: new items from supplementaries got missed → next
-		# Regenerate Bill click re-added them as a fresh supplementary.)
 		if code in billed_map:
 			billed_map[code]["qty"] += flt(row.qty)
-		else:
-			billed_map[code] = {
-				"qty": flt(row.qty),
-				"rate": flt(row.rate),
-				"item_name": row.item_name,
-				"uom": row.uom,
-			}
 
 	# Build current expected quantities
 	current_map = {}
@@ -2116,15 +2105,10 @@ def update_sales_invoice(catering_order):
 				"uom": it.uom,
 			}
 
-	# Compute the DIFFERENCE per item — but ONLY for items that are part of
-	# the catering order's items table. Anything billed that ISN'T in the order
-	# (e.g. additional service items billed via the "Additional Service" button)
-	# is intentionally ignored here — those have their own lifecycle and must
-	# not trigger a credit note from Regenerate Bill.
-	order_item_codes = set(current_map.keys())
-
+	# Compute the DIFFERENCE per item
 	diffs = []  # list of {item_code, qty_diff (signed), rate, item_name, uom}
-	for code in order_item_codes:
+	all_codes = set(billed_map.keys()) | set(current_map.keys())
+	for code in all_codes:
 		billed_qty = flt(billed_map.get(code, {}).get("qty", 0))
 		current_qty = flt(current_map.get(code, {}).get("qty", 0))
 		diff = current_qty - billed_qty
@@ -2819,58 +2803,4 @@ def get_items_for_package(menu_package):
 		return rows
 	except Exception:
 		return []
-
-@frappe.whitelist()
-def check_items_invoiced(catering_order, item_codes):
-	"""Return list of item codes that are already billed on a submitted
-	non-additional-service Sales Invoice for this catering_order.
-
-	Used by JS to block menu_package row removal when its items have been
-	invoiced (books-already-out-of-sync protection).
-	"""
-	import json as _json
-	if isinstance(item_codes, str):
-		try:
-			item_codes = _json.loads(item_codes)
-		except Exception:
-			item_codes = [item_codes]
-	if not item_codes:
-		return []
-
-	rows = frappe.db.sql("""
-		SELECT DISTINCT sii.item_code
-		FROM `tabSales Invoice Item` sii
-		INNER JOIN `tabSales Invoice` si ON si.name = sii.parent
-		WHERE si.catering_order = %s
-		  AND si.docstatus = 1
-		  AND IFNULL(si.is_additional_service, 0) = 0
-		  AND IFNULL(si.is_return, 0) = 0
-		  AND sii.item_code IN %s
-	""", (catering_order, tuple(item_codes)), as_dict=True)
-	return [r.item_code for r in rows]
-
-@frappe.whitelist()
-def check_work_orders_complete(catering_order):
-	"""Return work-order completion status for this catering order.
-
-	A Work Order is considered "complete" when status='Completed'
-	(produced_qty == qty). Used by the Delivery Plan button gate to
-	prevent premature delivery planning.
-
-	Returns: { total, completed, all_complete }
-	"""
-	rows = frappe.db.sql("""
-		SELECT name, status, qty, produced_qty
-		FROM `tabWork Order`
-		WHERE catering_order = %s
-		  AND docstatus = 1
-	""", catering_order, as_dict=True)
-	total = len(rows)
-	completed = sum(1 for r in rows if (r.status or "") == "Completed"
-	                                or flt(r.produced_qty or 0) >= flt(r.qty or 0) > 0)
-	return {
-		"total": total,
-		"completed": completed,
-		"all_complete": (total > 0 and completed == total),
-	}
 

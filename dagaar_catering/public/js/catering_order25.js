@@ -335,55 +335,6 @@ function _recalc_totals(frm) {
 	frm.doc.balance_due = frm.doc.total_order_value - (frm.doc.total_paid || 0);
 	['subtotal', 'discount_amount', 'total_order_value', 'deposit_amount', 'balance_due']
 		.forEach(f => frm.refresh_field(f));
-
-	// Also refresh the Regenerate Bill button visibility (after table edits)
-	_refresh_billing_state(frm);
-}
-
-// Re-evaluate the Regenerate Bill button without doing a full form refresh.
-// Compares saved server total to current edited total to decide visibility.
-// Note: server-side net_billed only changes when a new SI is created, but
-// the order's total_order_value just changed locally — so we predict drift.
-function _refresh_billing_state(frm) {
-	if (!frm.doc.sales_invoice || !frm.doc.name) return;
-
-	frappe.call({
-		method: 'dagaar_catering.catering_management.controllers.catering_order.get_billing_status',
-		args: { catering_order: frm.doc.name },
-		callback: (br) => {
-			const bs = br.message || {};
-			// Predicted unbilled = LIVE local order total - server's net_billed
-			const predicted_unbilled = flt(frm.doc.total_order_value) - flt(bs.net_billed || 0);
-
-			// Remove existing Regenerate Bill button if present
-			frm.remove_custom_button(__('⚠️ Regenerate Bill'), __('Create'));
-			frm.remove_custom_button(__('⚠️ Regenerate Bill'));
-
-			// Re-add if drift detected (and a package SI exists)
-			if (bs.has_sales_invoice && Math.abs(predicted_unbilled) > 0.01) {
-				const dir = predicted_unbilled > 0 ? 'under-billed' : 'over-billed';
-				const btn = frm.add_custom_button(__('⚠️ Regenerate Bill'), () => {
-					if (frm.is_dirty()) {
-						frappe.msgprint(__('Save the order first, then click Regenerate Bill.'));
-						return;
-					}
-					frappe.confirm(
-						__('Sync the Sales Invoice with current order? Unbilled diff: <b>{0}</b> ({1})',
-						   [format_currency(Math.abs(predicted_unbilled), bs.currency), dir]),
-						() => {
-							frappe.call({
-								method: 'dagaar_catering.catering_management.controllers.catering_order.update_sales_invoice',
-								args: { catering_order: frm.doc.name },
-								freeze: true, freeze_message: __('Regenerating bill...'),
-								callback: () => frm.reload_doc(),
-							});
-						}
-					);
-				});
-				if (btn) btn.addClass('btn-danger').css({'font-weight': 'bold'});
-			}
-		}
-	});
 }
 
 // ─── Action Buttons ────────────────────────────────────────────────────────
@@ -475,31 +426,24 @@ function _setup_action_buttons(frm) {
 		frm.add_custom_button(__('Production Plan'),
 			() => _action(frm, 'create_production_plan'), __('Create'));
 	}
-	// Delivery Plan button: requires ALL Work Orders for this catering order to be COMPLETED.
-	// Uses server endpoint to check work order completion status — prevents premature delivery
-	// planning when some dishes haven't finished cooking.
-	if (d.sales_invoice && !d.delivery_plan && d.production_plan) {
-		frappe.call({
-			method: 'dagaar_catering.catering_management.controllers.catering_order.check_work_orders_complete',
-			args: { catering_order: d.name },
-			callback: (r) => {
-				const st = r.message || {};
-				if (st.all_complete && st.total > 0) {
-					frm.add_custom_button(__('Delivery Plan'),
-						() => _action(frm, 'create_delivery_plan'), __('Create'));
-				} else if (st.total > 0) {
-					// Show informative indicator with progress
-					frm.dashboard.add_indicator(
-						__('⏳ Production in progress — {0} of {1} Work Order(s) complete. Finish all to enable Delivery Plan.',
-						   [st.completed, st.total]),
-						'orange'
-					);
-				} else {
-					frm.dashboard.add_indicator(
-						__('⏳ Awaiting Work Orders. Open Production Plan to start manufacture.'),
-						'grey'
-					);
-				}
+	// Delivery Plan button: requires at least one submitted Manufacture Stock Entry
+	if (d.sales_invoice && !d.delivery_plan) {
+		frappe.db.count('Stock Entry', {
+			filters: {
+				catering_order: d.name,
+				purpose: 'Manufacture',
+				docstatus: 1,
+			}
+		}).then(cnt => {
+			if (cnt > 0) {
+				frm.add_custom_button(__('Delivery Plan'),
+					() => _action(frm, 'create_delivery_plan'), __('Create'));
+			} else if (d.production_plan) {
+				// PP exists but no finished manufacture yet — show informational tip
+				frm.dashboard.add_indicator(
+					__('⏳ Production in progress — complete Manufacture Stock Entry to enable Delivery Plan'),
+					'orange'
+				);
 			}
 		});
 	}

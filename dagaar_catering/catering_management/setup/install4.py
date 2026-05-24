@@ -34,8 +34,6 @@ def after_install():
 	_safe_step("Workflows",      create_catering_workflows)
 	_safe_step("Workspace",      create_catering_workspace)
 	_safe_step("Custom Fields",  add_catering_order_custom_fields)
-	_safe_step("Additional Service Flag", add_additional_service_flag)
-	_safe_step("Additional Service Flag", add_additional_service_flag)
 	_safe_step("Categories",     seed_default_categories)
 	frappe.db.commit()
 	print("DagaarSoft Catering: post-install setup completed.")
@@ -551,46 +549,3 @@ def seed_default_categories():
 		except Exception as e:
 			print(f"  Failed to seed {cat['category_name']}: {str(e)[:100]}")
 
-def add_additional_service_flag():
-	"""Add is_additional_service Check field on Sales Invoice.
-
-	Flags SIs created via create_additional_service_invoice so they're
-	excluded from package billing math (Regenerate Bill / unbilled amount).
-	They still post normal revenue — only the order-level rebill logic ignores them.
-	"""
-	if not frappe.db.exists("DocType", "Sales Invoice"):
-		return
-
-	# Step 1: ALTER TABLE
-	try:
-		has_col = frappe.db.sql(
-			"""SELECT COUNT(*) FROM information_schema.columns
-			   WHERE table_schema = DATABASE()
-			     AND table_name = 'tabSales Invoice'
-			     AND column_name = 'is_additional_service'"""
-		)[0][0] > 0
-		if not has_col:
-			frappe.db.sql(
-				"ALTER TABLE `tabSales Invoice` "
-				"ADD COLUMN `is_additional_service` INT(1) NOT NULL DEFAULT 0"
-			)
-			print("    Added is_additional_service column on Sales Invoice")
-	except Exception as e:
-		print(f"    ALTER TABLE failed: {str(e)[:120]}")
-
-	# Step 2: Custom Field metadata
-	cf_name = "Sales Invoice-is_additional_service"
-	if not frappe.db.exists("Custom Field", cf_name):
-		try:
-			cf = frappe.new_doc("Custom Field")
-			cf.dt = "Sales Invoice"
-			cf.label = "Is Additional Service"
-			cf.fieldname = "is_additional_service"
-			cf.fieldtype = "Check"
-			cf.read_only = 1
-			cf.default = "0"
-			cf.description = "Tagged when created via the Catering Order Additional Service button. Excluded from order's package billing math."
-			cf.insert(ignore_permissions=True)
-			print("    Added Custom Field is_additional_service on Sales Invoice")
-		except Exception as e:
-			print(f"    Custom Field create failed: {str(e)[:120]}")

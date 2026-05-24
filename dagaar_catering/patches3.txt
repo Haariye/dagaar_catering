@@ -3,5 +3,3 @@ dagaar_catering.catering_management.patches.v1_0.create_default_settings
 dagaar_catering.catering_management.patches.v1_0.add_catering_order_links
 dagaar_catering.patches.v3_remove_legacy_workflow
 dagaar_catering.patches.v3_rename_pnl_report
-dagaar_catering.patches.v3_tag_additional_service_invoices
-dagaar_catering.patches.v3_heal_sales_invoice_field

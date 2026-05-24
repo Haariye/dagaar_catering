@@ -48,19 +48,11 @@ def on_submit(doc, method=None):
 		"status": "Closed",
 	}, update_modified=False)
 
-	# Close the linked Project (try common status values for ERPNext Project)
+	# Close the linked Project
 	project = frappe.db.get_value("Catering Order", doc.catering_order, "project")
 	if project:
-		for status_val in ("Completed", "Closed", "Cancelled"):
-			try:
-				frappe.db.set_value("Project", project, "status", status_val,
-				                    update_modified=False)
-				break
-			except Exception:
-				continue
 		try:
-			frappe.db.set_value("Project", project, "is_active", "No",
-			                    update_modified=False)
+			frappe.db.set_value("Project", project, "status", "Completed", update_modified=False)
 		except Exception:
 			pass
 
@@ -144,12 +136,8 @@ def _check_outstanding(doc):
 	if not outstanding_rows:
 		return  # all paid
 
-	# Read the bypass flag from the parent Catering Order (where the manager
-	# decides if this customer is allowed to close with outstanding balance).
-	co_bypass = frappe.db.get_value("Catering Order", doc.catering_order,
-	                                "bypass_outstanding") or 0
-	if co_bypass:
-		# Manager has explicitly authorized customer-credit close on the order
+	if doc.get("bypass_outstanding") or doc.get("bypass_deposit"):
+		# Manager has explicitly bypassed
 		return
 
 	is_mgr = any(r in frappe.get_roles() for r in
@@ -167,14 +155,10 @@ def _check_outstanding(doc):
 	msg += "<br>" + "<br>".join(lines) + "<br><br>"
 
 	if is_mgr:
-		msg += _("✅ <b>You can bypass this:</b> open the Catering Order <b>{0}</b>, "
-		         "tick <b>'Bypass Outstanding on Close (Manager Only)'</b>, save it, "
-		         "then come back and submit this Closing Sheet. "
-		         "The outstanding amount stays in the customer's receivable for later collection.").format(
-				doc.catering_order)
+		msg += _("As a Manager, you can tick the <b>Bypass Outstanding Balance</b> "
+		         "checkbox to override.")
 	else:
-		msg += _("Collect the outstanding payments — OR — ask a Catering Manager to tick "
-		         "<b>'Bypass Outstanding on Close'</b> on the Catering Order for a customer-credit close.")
+		msg += _("Collect the outstanding payments or ask a Catering Manager to bypass.")
 
 	frappe.throw(msg, title=_("Outstanding Balance"))
 

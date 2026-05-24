@@ -157,6 +157,13 @@
    "hidden": 0
   },
   {
+   "fieldname": "bypass_outstanding",
+   "label": "Bypass Outstanding Balance (Manager Only)",
+   "fieldtype": "Check",
+   "default": "0",
+   "description": "Manager override: allow closing even with outstanding customer balance"
+  },
+  {
    "fieldname": "outstanding",
    "fieldtype": "Currency",
    "label": "Outstanding",

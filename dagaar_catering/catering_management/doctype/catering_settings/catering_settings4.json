@@ -289,13 +289,6 @@
    "options": "Account"
   },
   {
-   "fieldname": "default_stock_adjustment_account",
-   "fieldtype": "Link",
-   "label": "Default Stock Adjustment Account",
-   "options": "Account",
-   "description": "Used as expense_account on Stock Entry (Manufacture) items linked to a Catering Order. Prevents COGS double-count \u2014 actual COGS posts only from Delivery Note."
-  },
-  {
    "fieldname": "default_cogs_account",
    "fieldtype": "Link",
    "label": "Default COGS Account",

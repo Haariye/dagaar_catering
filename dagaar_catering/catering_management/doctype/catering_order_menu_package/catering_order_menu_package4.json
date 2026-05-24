@@ -1,0 +1,67 @@
+{
+ "actions": [],
+ "creation": "2026-01-01 00:00:00",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "menu_package",
+  "guest_count",
+  "guest_label",
+  "subtotal"
+ ],
+ "fields": [
+  {
+   "allow_on_submit": 1,
+   "columns": 3,
+   "fieldname": "menu_package",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "label": "Menu Package",
+   "options": "Catering Menu Package",
+   "reqd": 1
+  },
+  {
+   "columns": 2,
+   "description": "Number of guests for this menu package (leave blank if unsure)",
+   "fieldname": "guest_count",
+   "fieldtype": "Int",
+   "in_list_view": 1,
+   "label": "Guest Count"
+  },
+  {
+   "allow_on_submit": 1,
+   "columns": 3,
+   "default": "Regular",
+   "description": "Type of guests this menu package serves",
+   "fieldname": "guest_label",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "label": "Guest Type",
+   "options": "Regular\nVIP\nChildren\nStaff/Crew\nElderly\nVendor\nOther"
+  },
+  {
+   "allow_on_submit": 1,
+   "columns": 2,
+   "description": "Auto-calculated: package price \u00d7 guest count",
+   "fieldname": "subtotal",
+   "fieldtype": "Currency",
+   "in_list_view": 1,
+   "label": "Subtotal",
+   "options": "parent.currency",
+   "read_only": 1
+  }
+ ],
+ "istable": 1,
+ "links": [],
+ "modified": "2026-05-17 00:19:15.951161",
+ "modified_by": "sysadmin@naleye.dagaarsoft.app",
+ "module": "Catering Management",
+ "name": "Catering Order Menu Package",
+ "owner": "Administrator",
+ "permissions": [],
+ "row_format": "Dynamic",
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": []
+}

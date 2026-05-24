@@ -41,65 +41,39 @@ def validate(doc, method=None):
 
 
 def on_submit(doc, method=None):
-	"""Close the order and post the summary Journal Entry."""
-	# Close the Catering Order
-	frappe.db.set_value("Catering Order", doc.catering_order, {
-		"closing_sheet": doc.name,
-		"status": "Closed",
-	}, update_modified=False)
+	"""Close the Catering Order. No Journal Entry posted.
 
-	# Close the linked Project (try common status values for ERPNext Project)
-	project = frappe.db.get_value("Catering Order", doc.catering_order, "project")
-	if project:
-		for status_val in ("Completed", "Closed", "Cancelled"):
-			try:
-				frappe.db.set_value("Project", project, "status", status_val,
-				                    update_modified=False)
-				break
-			except Exception:
-				continue
-		try:
-			frappe.db.set_value("Project", project, "is_active", "No",
-			                    update_modified=False)
-		except Exception:
-			pass
-
-	# Post summary JE
+	Standard ERPNext accounting already records:
+	  - Income from Sales Invoice GL (on SI submit)
+	  - COGS from Delivery Note GL (on DN submit)
+	A summary JE here would double-count. The Closing Sheet is a SUMMARY /
+	FROZEN REPORT only.
+	"""
+	if not doc.catering_order:
+		return
 	try:
-		je_name = _post_summary_journal_entry(doc)
-		if je_name and hasattr(doc, 'journal_entry'):
-			frappe.db.set_value("Catering Closing Sheet", doc.name, "journal_entry", je_name)
-			frappe.msgprint(_("Posted summary Journal Entry: {0}").format(
-				frappe.utils.get_link_to_form("Journal Entry", je_name)),
-				indicator="green", alert=True)
-	except Exception as e:
-		frappe.log_error(f"Closing Sheet JE failed: {str(e)[:300]}", "Catering Closing Sheet")
-		frappe.msgprint(_("Closing Sheet submitted, but JE posting failed: {0}").format(
-			str(e)[:200]), indicator="orange")
+		frappe.db.set_value("Catering Order", doc.catering_order, {
+			"status": "Closed",
+			"closing_sheet": doc.name,
+		}, update_modified=False)
+	except Exception:
+		pass
+
 
 
 def on_cancel(doc, method=None):
-	if doc.get("journal_entry"):
-		try:
-			je = frappe.get_doc("Journal Entry", doc.journal_entry)
-			if je.docstatus == 1:
-				je.flags.ignore_permissions = True
-				je.cancel()
-		except Exception:
-			pass
-
-	# Reopen the project and order
-	project = frappe.db.get_value("Catering Order", doc.catering_order, "project")
-	if project:
-		try:
-			frappe.db.set_value("Project", project, "status", "Open", update_modified=False)
-		except Exception:
-			pass
-	frappe.db.set_value("Catering Order", doc.catering_order, "status", "Delivered",
-		update_modified=False)
+	"""Reopen the order on cancel — no JE to reverse."""
+	if not doc.catering_order:
+		return
+	try:
+		frappe.db.set_value("Catering Order", doc.catering_order, {
+			"status": "Delivered",
+			"closing_sheet": None,
+		}, update_modified=False)
+	except Exception:
+		pass
 
 
-# ─── Helpers ────────────────────────────────────────────────────────────────
 
 def _calculate_pl(doc):
 	"""Pull all P&L figures from the live source so Closing Sheet matches the cards."""
@@ -144,12 +118,8 @@ def _check_outstanding(doc):
 	if not outstanding_rows:
 		return  # all paid
 
-	# Read the bypass flag from the parent Catering Order (where the manager
-	# decides if this customer is allowed to close with outstanding balance).
-	co_bypass = frappe.db.get_value("Catering Order", doc.catering_order,
-	                                "bypass_outstanding") or 0
-	if co_bypass:
-		# Manager has explicitly authorized customer-credit close on the order
+	if doc.get("bypass_outstanding") or doc.get("bypass_deposit"):
+		# Manager has explicitly bypassed
 		return
 
 	is_mgr = any(r in frappe.get_roles() for r in
@@ -167,14 +137,10 @@ def _check_outstanding(doc):
 	msg += "<br>" + "<br>".join(lines) + "<br><br>"
 
 	if is_mgr:
-		msg += _("✅ <b>You can bypass this:</b> open the Catering Order <b>{0}</b>, "
-		         "tick <b>'Bypass Outstanding on Close (Manager Only)'</b>, save it, "
-		         "then come back and submit this Closing Sheet. "
-		         "The outstanding amount stays in the customer's receivable for later collection.").format(
-				doc.catering_order)
+		msg += _("As a Manager, you can tick the <b>Bypass Outstanding Balance</b> "
+		         "checkbox to override.")
 	else:
-		msg += _("Collect the outstanding payments — OR — ask a Catering Manager to tick "
-		         "<b>'Bypass Outstanding on Close'</b> on the Catering Order for a customer-credit close.")
+		msg += _("Collect the outstanding payments or ask a Catering Manager to bypass.")
 
 	frappe.throw(msg, title=_("Outstanding Balance"))
 

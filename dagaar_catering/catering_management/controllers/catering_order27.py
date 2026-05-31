@@ -2294,49 +2294,28 @@ def create_delivery_note_from_plan(delivery_plan):
 		from_wh = frappe.db.get_value("Item Default", {"parent": dp.delivery_items[0].item_code}, "default_warehouse") \
 			if dp.delivery_items else None
 
-	# Fetch ALL submitted, non-return, non-additional-service Sales Invoices for
-	# this order, oldest first. Each SI line becomes a candidate DN target until
-	# its remaining qty is exhausted.
-	# Structure: si_lines_by_code[item_code] = [list of open SI lines, oldest first]
-	si_lines_by_code = {}
-	if dp.catering_order:
+	# Load the Sales Invoice items if available — we link DN items to SI items so the DN
+	# does NOT re-bill what's already invoiced. ERPNext handles this via against_sales_invoice + si_detail.
+	si_items_by_code = {}
+	si_name = None
+	if co and co.sales_invoice:
 		try:
-			# Check if is_additional_service column exists (graceful fallback)
-			has_flag_col = frappe.db.sql("""
-				SELECT COUNT(*) FROM information_schema.columns
-				WHERE table_schema = DATABASE()
-				  AND table_name = 'tabSales Invoice'
-				  AND column_name = 'is_additional_service'
-			""")[0][0] > 0
-			service_filter = "AND IFNULL(si.is_additional_service, 0) = 0" if has_flag_col else ""
-
-			rows = frappe.db.sql(f"""
-				SELECT si.name AS si_name,
-				       sii.name AS si_item_name, sii.item_code,
-				       sii.qty AS si_qty, sii.delivered_qty AS delivered_qty,
-				       sii.rate AS rate, sii.uom AS uom
-				FROM `tabSales Invoice` si
-				INNER JOIN `tabSales Invoice Item` sii ON sii.parent = si.name
-				WHERE si.catering_order = %s
-				  AND si.docstatus = 1
-				  AND IFNULL(si.is_return, 0) = 0
-				  {service_filter}
-				ORDER BY si.creation ASC, sii.idx ASC
-			""", dp.catering_order, as_dict=True)
-			for r in rows:
-				remaining = flt(r.si_qty) - flt(r.delivered_qty or 0)
-				if remaining <= 0.001:
-					continue  # already fully delivered
-				si_lines_by_code.setdefault(r.item_code, []).append({
-					"si_name": r.si_name,
-					"si_item_name": r.si_item_name,
-					"si_qty": flt(r.si_qty),
-					"remaining": remaining,
-					"rate": flt(r.rate),
-				})
+			si = frappe.get_doc("Sales Invoice", co.sales_invoice)
+			if si.docstatus == 1:
+				si_name = si.name
+				for sii in si.items:
+					# Track remaining-to-deliver: invoiced qty - already-delivered qty
+					already_delivered = flt(sii.delivered_qty or 0)
+					remaining = flt(sii.qty) - already_delivered
+					si_items_by_code[sii.item_code] = {
+						"si_item_name": sii.name,
+						"si_qty": flt(sii.qty),
+						"delivered_qty": already_delivered,
+						"remaining": remaining,
+						"rate": flt(sii.rate),
+					}
 		except Exception:
-			import traceback
-			frappe.log_error(traceback.format_exc()[:400], "DN build multi-SI fetch")
+			pass
 
 	# Build DN items — skip items already fully delivered/billed
 	items_added = 0
@@ -2345,42 +2324,29 @@ def create_delivery_note_from_plan(delivery_plan):
 		item_code = item.item_code
 		qty_to_deliver = flt(item.qty)
 
-		# Match against ALL open SI lines for this item (main + supplementaries).
-		# Each SI line becomes a separate DN line with its own against_sales_invoice
-		# link. Allocate oldest first, capped to planned qty.
-		if item_code in si_lines_by_code:
-			si_lines = si_lines_by_code[item_code]
-			total_si_remaining = sum(flt(l["remaining"]) for l in si_lines)
-
-			if total_si_remaining <= 0.001:
+		# Match against SI line if exists
+		if item_code in si_items_by_code:
+			si_info = si_items_by_code[item_code]
+			if si_info["remaining"] <= 0:
+				# Already fully delivered/billed
 				items_skipped.append(f"{item_code} (already delivered)")
 				continue
+			# Cap to remaining qty
+			qty_to_deliver = min(qty_to_deliver, si_info["remaining"])
 
-			# Cap total qty to deliver to whichever is smaller: planned or sum-remaining
-			cap = min(qty_to_deliver, total_si_remaining)
-			remaining_to_allocate = cap
-
-			# Walk SI lines oldest first and create one DN line per SI line
-			for si_line in si_lines:
-				if remaining_to_allocate <= 0.001:
-					break
-				allocate = min(remaining_to_allocate, flt(si_line["remaining"]))
-				if allocate <= 0.001:
-					continue
-				dn.append("items", {
-					"item_code": item_code,
-					"item_name": item.item_name,
-					"qty": allocate,
-					"uom": item.uom,
-					"warehouse": from_wh,
-					"cost_center": co.cost_center if co else None,
-					"rate": si_line["rate"],
-					"against_sales_invoice": si_line["si_name"],
-					"si_detail": si_line["si_item_name"],
-					"sales_invoice_item": si_line["si_item_name"],
-				})
-				remaining_to_allocate -= allocate
-				items_added += 1
+			dn.append("items", {
+				"item_code": item_code,
+				"item_name": item.item_name,
+				"qty": qty_to_deliver,
+				"uom": item.uom,
+				"warehouse": from_wh,
+				"cost_center": co.cost_center if co else None,
+				"rate": si_info["rate"],
+				"against_sales_invoice": si_name,
+				"si_detail": si_info["si_item_name"],
+				"sales_invoice_item": si_info["si_item_name"],
+			})
+			items_added += 1
 		else:
 			# Item not in Sales Invoice — deliver as-is (will be billed later or marked unbilled)
 			dn.append("items", {

@@ -1073,7 +1073,7 @@ def create_sales_order(catering_order, auto_submit=0):
 
 	so = _create_doc_with_naming("Sales Order")
 	so.customer = co.customer
-	so.transaction_date = co.event_date or today()
+	so.transaction_date = today()
 	so.delivery_date = co.event_date
 	so.company = co.company
 	so.cost_center = co.cost_center
@@ -1152,7 +1152,7 @@ def create_sales_invoice(catering_order, additional_discount=None, auto_submit=0
 
 	si = _create_doc_with_naming("Sales Invoice")
 	si.customer = co.customer
-	si.posting_date = co.event_date or today()
+	si.posting_date = today()
 	si.due_date = add_days(today(), 30)
 	si.company = co.company
 	si.cost_center = co.cost_center
@@ -1363,7 +1363,7 @@ def create_payment_entry(catering_order, allocations=None, mode_of_payment=None,
 	pe.party_type = "Customer"
 	pe.party = co.customer
 	pe.company = co.company
-	pe.posting_date = co.event_date or today()
+	pe.posting_date = today()
 	pe.mode_of_payment = mode_of_payment
 	pe.paid_from = debit_to
 	pe.paid_to = paid_to
@@ -2156,7 +2156,7 @@ def update_sales_invoice(catering_order):
 	if positive_diffs:
 		sup = _create_doc_with_naming("Sales Invoice")
 		sup.customer = co.customer
-		sup.posting_date = co.event_date or today()
+		sup.posting_date = today()
 		sup.due_date = add_days(today(), 30)
 		sup.company = co.company
 		sup.cost_center = co.cost_center
@@ -2197,7 +2197,7 @@ def update_sales_invoice(catering_order):
 		cn.is_return = 1
 		cn.return_against = si.name
 		cn.customer = co.customer
-		cn.posting_date = co.event_date or today()
+		cn.posting_date = today()
 		cn.company = co.company
 		cn.cost_center = co.cost_center
 		cn.project = co.project
@@ -2274,7 +2274,7 @@ def create_delivery_note_from_plan(delivery_plan):
 
 	dn = _create_doc_with_naming("Delivery Note")
 	dn.customer = co.customer if co else None
-	dn.posting_date = co.event_date or today() if co else today()
+	dn.posting_date = today()
 	dn.posting_time = dp.delivery_time or "12:00:00"
 	dn.company = dp.company or (co.company if co else None)
 	dn.cost_center = co.cost_center if co else None
@@ -2719,7 +2719,7 @@ def create_additional_service_invoice(catering_order, service_item, qty, rate, d
 	# Create the Sales Invoice
 	si = _create_doc_with_naming("Sales Invoice")
 	si.customer = co.customer
-	si.posting_date = co.event_date or today()
+	si.posting_date = today()
 	si.due_date = add_days(today(), 30)
 	si.company = co.company
 	si.cost_center = co.cost_center

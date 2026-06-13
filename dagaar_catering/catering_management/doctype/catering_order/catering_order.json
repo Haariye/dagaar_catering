@@ -665,10 +665,11 @@
  ],
  "is_submittable": 1,
  "links": [],
- "modified": "2026-05-24 16:27:07.438142",
+ "modified": "2026-06-13 18:06:01.913715",
  "modified_by": "Administrator",
  "module": "Catering Management",
  "name": "Catering Order",
+ "naming_rule": "By \"Naming Series\" field",
  "owner": "Administrator",
  "permissions": [
   {
@@ -767,7 +768,6 @@
    "share": 1
   }
  ],
- "row_format": "Dynamic",
  "search_fields": "customer,status,event_date",
  "sort_field": "modified",
  "sort_order": "DESC",

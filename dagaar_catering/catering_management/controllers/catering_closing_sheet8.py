@@ -41,23 +41,12 @@ def validate(doc, method=None):
 
 
 def on_submit(doc, method=None):
-	"""Close the Catering Order and the linked Project.
-
-	NO Journal Entry is posted here. Income is already in the GL from the
-	Sales Invoice; COGS is already in the GL from the Delivery Note. A summary
-	JE would double-count. The Closing Sheet is a SUMMARY / FROZEN REPORT only.
-	"""
-	if not doc.catering_order:
-		return
-
+	"""Close the order and post the summary Journal Entry."""
 	# Close the Catering Order
-	try:
-		frappe.db.set_value("Catering Order", doc.catering_order, {
-			"closing_sheet": doc.name,
-			"status": "Closed",
-		}, update_modified=False)
-	except Exception:
-		pass
+	frappe.db.set_value("Catering Order", doc.catering_order, {
+		"closing_sheet": doc.name,
+		"status": "Closed",
+	}, update_modified=False)
 
 	# Close the linked Project (try common status values for ERPNext Project)
 	project = frappe.db.get_value("Catering Order", doc.catering_order, "project")
@@ -75,28 +64,42 @@ def on_submit(doc, method=None):
 		except Exception:
 			pass
 
+	# Post summary JE
+	try:
+		je_name = _post_summary_journal_entry(doc)
+		if je_name and hasattr(doc, 'journal_entry'):
+			frappe.db.set_value("Catering Closing Sheet", doc.name, "journal_entry", je_name)
+			frappe.msgprint(_("Posted summary Journal Entry: {0}").format(
+				frappe.utils.get_link_to_form("Journal Entry", je_name)),
+				indicator="green", alert=True)
+	except Exception as e:
+		frappe.log_error(f"Closing Sheet JE failed: {str(e)[:300]}", "Catering Closing Sheet")
+		frappe.msgprint(_("Closing Sheet submitted, but JE posting failed: {0}").format(
+			str(e)[:200]), indicator="orange")
 
 
 def on_cancel(doc, method=None):
-	"""Reopen the order (no JE was posted, so nothing to reverse)."""
-	if not doc.catering_order:
-		return
-	try:
-		frappe.db.set_value("Catering Order", doc.catering_order, {
-			"status": "Delivered",
-			"closing_sheet": None,
-		}, update_modified=False)
-	except Exception:
-		pass
+	if doc.get("journal_entry"):
+		try:
+			je = frappe.get_doc("Journal Entry", doc.journal_entry)
+			if je.docstatus == 1:
+				je.flags.ignore_permissions = True
+				je.cancel()
+		except Exception:
+			pass
+
+	# Reopen the project and order
 	project = frappe.db.get_value("Catering Order", doc.catering_order, "project")
 	if project:
 		try:
 			frappe.db.set_value("Project", project, "status", "Open", update_modified=False)
-			frappe.db.set_value("Project", project, "is_active", "Yes", update_modified=False)
 		except Exception:
 			pass
+	frappe.db.set_value("Catering Order", doc.catering_order, "status", "Delivered",
+		update_modified=False)
 
 
+# ─── Helpers ────────────────────────────────────────────────────────────────
 
 def _calculate_pl(doc):
 	"""Pull all P&L figures from the live source so Closing Sheet matches the cards."""

@@ -65,35 +65,6 @@
   {
    "hidden": 0,
    "is_query_report": 0,
-   "label": "Menu Management",
-   "link_count": 0,
-   "link_type": "DocType",
-   "onboard": 0,
-   "type": "Card Break"
-  },
-  {
-   "hidden": 0,
-   "is_query_report": 0,
-   "label": "Catering Menu Package",
-   "link_count": 0,
-   "link_to": "Catering Menu Package",
-   "link_type": "DocType",
-   "onboard": 0,
-   "type": "Link"
-  },
-  {
-   "hidden": 0,
-   "is_query_report": 0,
-   "label": "Catering Recipe",
-   "link_count": 0,
-   "link_to": "Catering Recipe",
-   "link_type": "DocType",
-   "onboard": 0,
-   "type": "Link"
-  },
-  {
-   "hidden": 0,
-   "is_query_report": 0,
    "label": "Kitchen & Production",
    "link_count": 0,
    "link_type": "DocType",
@@ -286,9 +257,58 @@
    "link_type": "Report",
    "onboard": 0,
    "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Menu Management",
+   "link_count": 4,
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Card Break"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Catering Menu Package",
+   "link_count": 0,
+   "link_to": "Catering Menu Package",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Catering Recipe",
+   "link_count": 0,
+   "link_to": "Catering Recipe",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Sales Invoice",
+   "link_count": 0,
+   "link_to": "Sales Invoice",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Sales Order",
+   "link_count": 0,
+   "link_to": "Sales Order",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
   }
  ],
- "modified": "2026-05-16 22:05:10.104589",
+ "modified": "2026-06-01 01:32:50.537532",
  "modified_by": "Administrator",
  "module": "Catering Management",
  "name": "Dagaar Catering",
@@ -298,7 +318,7 @@
  "public": 1,
  "quick_lists": [],
  "roles": [],
- "sequence_id": 17.0,
+ "sequence_id": 2.0,
  "shortcuts": [],
  "title": "Dagaar Catering"
 }

@@ -367,23 +367,3 @@ def set_stock_entry_expense_account(doc, method=None):
 			row.expense_account = sa_account
 	except Exception:
 		pass
-
-
-def set_stock_entry_posting_date(doc, method=None):
-	"""When a Stock Entry is linked to a catering_order, set its posting_date
-	to the order's event_date (so all GL entries for the catering job land on
-	the event day, not the day the SE was created).
-
-	Only applies on insert (won't overwrite manually-set dates on edits).
-	"""
-	if not getattr(doc, "catering_order", None):
-		return
-	if doc.get("__islocal") is None and doc.get("posting_date"):
-		# Only set on new docs (avoid clobbering edits)
-		pass
-	try:
-		event_date = frappe.db.get_value("Catering Order", doc.catering_order, "event_date")
-		if event_date:
-			doc.posting_date = event_date
-	except Exception:
-		pass

@@ -1,6 +1,6 @@
 {
  "actions": [],
- "creation": "2024-01-01 00:00:00.000000",
+ "creation": "2024-01-01 00:00:00",
  "doctype": "DocType",
  "editable_grid": 1,
  "engine": "InnoDB",
@@ -53,50 +53,32 @@
   "default_wastage_account",
   "default_food_cogs_account",
   "default_labor_cost_account",
-  "default_delivery_cost_account"
+  "default_delivery_cost_account",
+  "default_stock_adjustment_account"
  ],
  "fields": [
   {
    "fieldname": "general_sb",
    "fieldtype": "Section Break",
-   "label": "General",
-   "collapsible": 0
+   "label": "General"
   },
   {
    "fieldname": "default_currency",
    "fieldtype": "Link",
    "label": "Default Currency",
-   "reqd": 0,
-   "bold": 0,
-   "in_list_view": 0,
-   "in_filter": 0,
-   "read_only": 0,
-   "hidden": 0,
    "options": "Currency"
   },
   {
+   "default": "15",
    "fieldname": "minimum_margin_percent",
    "fieldtype": "Percent",
-   "label": "Minimum Margin %",
-   "reqd": 0,
-   "bold": 0,
-   "in_list_view": 0,
-   "in_filter": 0,
-   "read_only": 0,
-   "hidden": 0,
-   "default": "15"
+   "label": "Minimum Margin %"
   },
   {
+   "default": "5",
    "fieldname": "default_wastage_percent",
    "fieldtype": "Percent",
-   "label": "Default Wastage %",
-   "reqd": 0,
-   "bold": 0,
-   "in_list_view": 0,
-   "in_filter": 0,
-   "read_only": 0,
-   "hidden": 0,
-   "default": "5"
+   "label": "Default Wastage %"
   },
   {
    "fieldname": "cb_1",
@@ -106,421 +88,306 @@
    "fieldname": "default_company",
    "fieldtype": "Link",
    "label": "Default Company",
-   "reqd": 0,
-   "bold": 0,
-   "in_list_view": 0,
-   "in_filter": 0,
-   "read_only": 0,
-   "hidden": 0,
    "options": "Company"
   },
   {
    "fieldname": "default_warehouse",
    "fieldtype": "Link",
    "label": "Default Warehouse",
-   "reqd": 0,
-   "bold": 0,
-   "in_list_view": 0,
-   "in_filter": 0,
-   "read_only": 0,
-   "hidden": 0,
    "options": "Warehouse"
   },
   {
    "fieldname": "default_cost_center",
    "fieldtype": "Link",
    "label": "Default Cost Center",
-   "reqd": 0,
-   "bold": 0,
-   "in_list_view": 0,
-   "in_filter": 0,
-   "read_only": 0,
-   "hidden": 0,
    "options": "Cost Center"
   },
   {
    "fieldname": "business_controls_sb",
    "fieldtype": "Section Break",
-   "label": "Business Controls",
-   "collapsible": 0
+   "label": "Business Controls"
   },
   {
+   "default": "1",
    "fieldname": "require_deposit_before_production",
    "fieldtype": "Check",
-   "label": "Require Deposit Before Production",
-   "reqd": 0,
-   "bold": 0,
-   "in_list_view": 0,
-   "in_filter": 0,
-   "read_only": 0,
-   "hidden": 0,
-   "default": "1"
+   "label": "Require Deposit Before Production"
   },
   {
+   "default": "1",
    "fieldname": "require_so_before_production",
    "fieldtype": "Check",
-   "label": "Require Sales Order Before Production",
-   "reqd": 0,
-   "bold": 0,
-   "in_list_view": 0,
-   "in_filter": 0,
-   "read_only": 0,
-   "hidden": 0,
-   "default": "1"
+   "label": "Require Sales Order Before Production"
   },
   {
+   "default": "1",
    "fieldname": "require_bom_for_work_order",
    "fieldtype": "Check",
-   "label": "Require BOM for Work Order",
-   "reqd": 0,
-   "bold": 0,
-   "in_list_view": 0,
-   "in_filter": 0,
-   "read_only": 0,
-   "hidden": 0,
-   "default": "1"
+   "label": "Require BOM for Work Order"
   },
   {
+   "default": "1",
    "fieldname": "require_delivery_before_invoice",
    "fieldtype": "Check",
-   "label": "Require Delivery Before Invoice",
-   "reqd": 0,
-   "bold": 0,
-   "in_list_view": 0,
-   "in_filter": 0,
-   "read_only": 0,
-   "hidden": 0,
-   "default": "1"
+   "label": "Require Delivery Before Invoice"
   },
   {
+   "default": "1",
    "fieldname": "require_profit_review_before_closure",
    "fieldtype": "Check",
-   "label": "Require Profit Review Before Closure",
-   "reqd": 0,
-   "bold": 0,
-   "in_list_view": 0,
-   "in_filter": 0,
-   "read_only": 0,
-   "hidden": 0,
-   "default": "1"
+   "label": "Require Profit Review Before Closure"
   },
   {
    "fieldname": "notifications_sb",
    "fieldtype": "Section Break",
-   "label": "Notifications",
-   "collapsible": 0
+   "label": "Notifications"
   },
   {
+   "default": "1",
    "fieldname": "auto_create_activity_log",
    "fieldtype": "Check",
-   "label": "Auto-Create Activity Log",
-   "reqd": 0,
-   "bold": 0,
-   "in_list_view": 0,
-   "in_filter": 0,
-   "read_only": 0,
-   "hidden": 0,
-   "default": "1"
+   "label": "Auto-Create Activity Log"
   },
   {
+   "default": "1",
    "fieldname": "send_daily_alerts",
    "fieldtype": "Check",
-   "label": "Send Daily Alerts",
-   "reqd": 0,
-   "bold": 0,
-   "in_list_view": 0,
-   "in_filter": 0,
-   "read_only": 0,
-   "hidden": 0,
-   "default": "1"
+   "label": "Send Daily Alerts"
   },
   {
+   "default": "1",
    "fieldname": "send_weekly_summary",
    "fieldtype": "Check",
-   "label": "Send Weekly Summary",
-   "reqd": 0,
-   "bold": 0,
-   "in_list_view": 0,
-   "in_filter": 0,
-   "read_only": 0,
-   "hidden": 0,
-   "default": "1"
+   "label": "Send Weekly Summary"
   },
   {
+   "default": "1",
    "fieldname": "send_monthly_summary",
    "fieldtype": "Check",
-   "label": "Send Monthly Summary",
-   "reqd": 0,
-   "bold": 0,
-   "in_list_view": 0,
-   "in_filter": 0,
-   "read_only": 0,
-   "hidden": 0,
-   "default": "1"
+   "label": "Send Monthly Summary"
   },
   {
    "fieldname": "accounting_sb",
    "fieldtype": "Section Break",
-   "label": "Accounting",
-   "collapsible": 0
+   "label": "Accounting"
   },
   {
    "fieldname": "default_income_account",
    "fieldtype": "Link",
-   "label": "Default Income Account",
-   "reqd": 0,
-   "bold": 0,
-   "in_list_view": 0,
-   "in_filter": 0,
-   "read_only": 0,
-   "hidden": 0,
+   "label": "Default COGS Account",
    "options": "Account"
   },
   {
    "fieldname": "default_expense_account",
    "fieldtype": "Link",
    "label": "Default Expense Account",
-   "reqd": 0,
-   "bold": 0,
-   "in_list_view": 0,
-   "in_filter": 0,
-   "read_only": 0,
-   "hidden": 0,
    "options": "Account"
   },
   {
+   "description": "Used as expense_account on Stock Entry (Manufacture) items linked to a Catering Order. Prevents COGS double-count \u2014 actual COGS posts only from Delivery Note.",
    "fieldname": "default_stock_adjustment_account",
    "fieldtype": "Link",
    "label": "Default Stock Adjustment Account",
-   "options": "Account",
-   "description": "Used as expense_account on Stock Entry (Manufacture) items linked to a Catering Order. Prevents COGS double-count \u2014 actual COGS posts only from Delivery Note."
+   "options": "Account"
   },
   {
    "fieldname": "default_cogs_account",
    "fieldtype": "Link",
-   "label": "Default COGS Account",
-   "reqd": 0,
-   "bold": 0,
-   "in_list_view": 0,
-   "in_filter": 0,
-   "read_only": 0,
-   "hidden": 0,
+   "label": "Default Income Account",
    "options": "Account"
   },
   {
-   "fieldname": "default_deposit_percent",
-   "label": "Default Initial Payment %",
-   "fieldtype": "Percent",
    "default": "30",
-   "description": "Suggested initial payment % when creating first Payment Entry"
+   "description": "Suggested initial payment % when creating first Payment Entry",
+   "fieldname": "default_deposit_percent",
+   "fieldtype": "Percent",
+   "label": "Default Initial Payment %"
   },
   {
    "fieldname": "default_branch",
-   "label": "Default Branch",
    "fieldtype": "Link",
+   "label": "Default Branch",
    "options": "Branch"
   },
   {
    "fieldname": "default_project",
-   "label": "Default Project",
    "fieldtype": "Link",
+   "label": "Default Project",
    "options": "Project"
   },
   {
    "fieldname": "default_price_list",
-   "label": "Default Price List",
    "fieldtype": "Link",
+   "label": "Default Price List",
    "options": "Price List"
   },
   {
    "fieldname": "default_source_warehouse",
-   "label": "Default Raw Material Warehouse",
    "fieldtype": "Link",
+   "label": "Default Raw Material Warehouse",
    "options": "Warehouse"
   },
   {
    "fieldname": "default_wip_warehouse",
-   "label": "Default WIP Warehouse",
    "fieldtype": "Link",
+   "label": "Default WIP Warehouse",
    "options": "Warehouse"
   },
   {
    "fieldname": "default_fg_warehouse",
-   "label": "Default Finished Goods Warehouse",
    "fieldtype": "Link",
+   "label": "Default Finished Goods Warehouse",
    "options": "Warehouse"
   },
   {
    "fieldname": "default_wastage_warehouse",
-   "label": "Wastage Warehouse",
    "fieldtype": "Link",
+   "label": "Wastage Warehouse",
    "options": "Warehouse"
   },
   {
    "fieldname": "default_advance_account",
-   "label": "Default Advance Account",
    "fieldtype": "Link",
+   "label": "Default Advance Account",
    "options": "Account"
   },
   {
    "fieldname": "default_receivable_account",
-   "label": "Default Receivable Account",
    "fieldtype": "Link",
+   "label": "Default Receivable Account",
    "options": "Account"
   },
   {
    "fieldname": "default_wastage_expense_account",
-   "label": "Wastage Expense Account",
    "fieldtype": "Link",
+   "label": "Wastage Expense Account",
    "options": "Account"
   },
   {
    "fieldname": "default_emergency_expense_account",
-   "label": "Emergency Expense Account",
    "fieldtype": "Link",
+   "label": "Emergency Expense Account",
    "options": "Account"
   },
   {
    "fieldname": "default_sales_tax_template",
-   "label": "Default Sales Tax Template",
    "fieldtype": "Link",
+   "label": "Default Sales Tax Template",
    "options": "Sales Taxes and Charges Template"
   },
   {
    "fieldname": "default_purchase_tax_template",
-   "label": "Default Purchase Tax Template",
    "fieldtype": "Link",
+   "label": "Default Purchase Tax Template",
    "options": "Purchase Taxes and Charges Template"
   },
   {
+   "default": "1",
    "fieldname": "require_invoice_before_closure",
-   "label": "Require Invoice before Closure",
    "fieldtype": "Check",
-   "default": "1"
+   "label": "Require Invoice before Closure"
   },
   {
+   "default": "1",
    "fieldname": "require_bom_for_production_items",
-   "label": "Require BOM for Production Items",
    "fieldtype": "Check",
-   "default": "1"
+   "label": "Require BOM for Production Items"
   },
   {
+   "default": "1",
    "fieldname": "auto_calculate_raw_materials",
-   "label": "Auto-calculate Raw Materials from BOM",
    "fieldtype": "Check",
-   "default": "1"
+   "label": "Auto-calculate Raw Materials from BOM"
   },
   {
+   "default": "1",
    "fieldname": "auto_check_stock_availability",
-   "label": "Auto-check Stock Availability",
    "fieldtype": "Check",
-   "default": "1"
+   "label": "Auto-check Stock Availability"
   },
   {
+   "default": "1",
    "fieldname": "auto_apply_wastage_to_cost",
-   "label": "Auto-apply Wastage % to Cost",
    "fieldtype": "Check",
-   "default": "1"
+   "label": "Auto-apply Wastage % to Cost"
   },
   {
    "fieldname": "default_mode_of_payment",
-   "label": "Default Mode of Payment",
    "fieldtype": "Link",
+   "label": "Default Mode of Payment",
    "options": "Mode of Payment"
   },
   {
+   "description": "Account where deposits are received (Bank or Cash type)",
    "fieldname": "default_bank_account",
+   "fieldtype": "Link",
    "label": "Default Bank/Cash Account",
-   "fieldtype": "Link",
-   "options": "Account",
-   "description": "Account where deposits are received (Bank or Cash type)"
+   "options": "Account"
   },
   {
-   "fieldname": "minimum_payment_percent_for_production",
-   "label": "Minimum Payment % Required Before Production",
-   "fieldtype": "Percent",
    "default": "30",
-   "description": "Catering Order must have at least this % of Sales Invoice paid before Production can start. (Manager can bypass.)"
+   "description": "Catering Order must have at least this % of Sales Invoice paid before Production can start. (Manager can bypass.)",
+   "fieldname": "minimum_payment_percent_for_production",
+   "fieldtype": "Percent",
+   "label": "Minimum Payment % Required Before Production"
   },
   {
+   "description": "Account used for wastage cost JE postings",
    "fieldname": "default_wastage_account",
+   "fieldtype": "Link",
    "label": "Default Wastage Expense Account",
-   "fieldtype": "Link",
-   "options": "Account",
-   "description": "Account used for wastage cost JE postings"
+   "options": "Account"
   },
   {
+   "description": "Cost of Goods Sold account for catering food consumption",
    "fieldname": "default_food_cogs_account",
+   "fieldtype": "Link",
    "label": "Default Food COGS Account",
-   "fieldtype": "Link",
-   "options": "Account",
-   "description": "Cost of Goods Sold account for catering food consumption"
+   "options": "Account"
   },
   {
+   "description": "Account for cooking/service labor cost",
    "fieldname": "default_labor_cost_account",
-   "label": "Default Labor Cost Account",
    "fieldtype": "Link",
-   "options": "Account",
-   "description": "Account for cooking/service labor cost"
+   "label": "Default Labor Cost Account",
+   "options": "Account"
   },
   {
+   "description": "Account for delivery & transport costs",
    "fieldname": "default_delivery_cost_account",
-   "label": "Default Delivery Cost Account",
    "fieldtype": "Link",
-   "options": "Account",
-   "description": "Account for delivery & transport costs"
+   "label": "Default Delivery Cost Account",
+   "options": "Account"
   }
  ],
- "is_submittable": 0,
  "issingle": 1,
- "istable": 0,
  "links": [],
- "modified": "2024-01-01 00:00:00.000000",
+ "modified": "2026-06-01 01:56:43.153739",
  "modified_by": "Administrator",
  "module": "Catering Management",
  "name": "Catering Settings",
- "naming_series": "",
  "owner": "Administrator",
  "permissions": [
   {
+   "email": 1,
+   "print": 1,
+   "read": 1,
    "role": "Catering Manager",
-   "read": 1,
-   "write": 1,
-   "create": 0,
-   "delete": 0,
-   "submit": 0,
-   "cancel": 0,
-   "amend": 0,
-   "report": 1,
-   "export": 1,
    "share": 1,
-   "print": 1,
-   "email": 1
+   "write": 1
   },
   {
+   "email": 1,
+   "print": 1,
+   "read": 1,
    "role": "Catering Management",
-   "read": 1,
-   "write": 1,
-   "create": 0,
-   "delete": 0,
-   "submit": 0,
-   "cancel": 0,
-   "amend": 0,
-   "report": 1,
-   "export": 1,
    "share": 1,
-   "print": 1,
-   "email": 1
+   "write": 1
   },
   {
-   "role": "System Manager",
    "read": 1,
-   "write": 1,
-   "report": 0,
-   "export": 0,
-   "share": 0,
-   "print": 0,
-   "email": 0
+   "role": "System Manager",
+   "write": 1
   }
  ],
  "sort_field": "modified",
